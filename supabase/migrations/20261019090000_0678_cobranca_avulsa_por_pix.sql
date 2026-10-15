@@ -489,6 +489,29 @@ create policy order_items_select on public.order_items
     or public.fn_is_platform_admin()
   );
 
+-- ─── O provedor precisa caber em webhook_events_log ─────────────────────────
+--
+-- `webhook_events_log_provider_check` aceita uma lista fechada, e sem
+-- `infinitepay` nela NENHUMA linha de aviso entra: o INSERT da rota é recusado
+-- pelo CHECK, e o índice parcial logo abaixo nunca encontraria linha alguma.
+--
+-- A lista é reescrita INTEIRA, nunca alargada por um segundo bloco — é a mesma
+-- postura que o bloco da 0601 e da 0623 já declara no baseline, e o motivo é a
+-- armadilha que esta migration cita no cabeçalho: duas listas divergem, e a
+-- migration seguinte que recriar a sua derruba a atualização de quem alargou.
+-- Toda linha que já passava pelo CHECK antigo passa por este, então não há
+-- backfill a fazer antes.
+alter table public.webhook_events_log
+  drop constraint if exists webhook_events_log_provider_check;
+alter table public.webhook_events_log
+  add constraint webhook_events_log_provider_check check (provider in (
+    'waha', 'nuvemshop', 'generic', 'meta_cloud', 'zernio', 'datafy',
+    -- (migration 0601) os provedores de cobrança do revendedor.
+    'stripe', 'asaas',
+    -- (migration 0678) a cobrança que cada organização faz ao cliente dela.
+    'infinitepay'
+  ));
+
 -- ─── Idempotência do aviso do gateway ───────────────────────────────────────
 --
 -- `idx_webhook_events_external_id` existe e NÃO é único: dois POSTs simultâneos

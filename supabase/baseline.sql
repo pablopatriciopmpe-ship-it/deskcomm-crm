@@ -14520,7 +14520,10 @@ alter table public.webhook_events_log
     -- (migration 0601) os provedores de cobrança do revendedor. A linha deles
     -- nasce com organization_id nulo e corpo {id,type}: é ponteiro, nunca o
     -- corpo do provedor, e fica invisível ao tenant pela própria policy.
-    'stripe', 'asaas'
+    'stripe', 'asaas',
+    -- (migration 0678) a cobranca que cada organizacao faz ao cliente dela.
+    -- Sem esta entrada o INSERT da rota do webhook e recusado pelo CHECK.
+    'infinitepay'
   ));
 
 -- ---- a marca da instalação sai do .env e vai para o banco (migration 0155) ----
@@ -56666,6 +56669,14 @@ create policy order_items_select on public.order_items
     (organization_id in (select public.fn_user_org_ids()))
     or public.fn_is_platform_admin()
   );
+
+-- ─── O provedor em webhook_events_log ──────────────────────────────────────
+--
+-- `infinitepay` entra na lista CANÔNICA de `webhook_events_log_provider_check`,
+-- lá em cima neste mesmo arquivo, e não num bloco aqui: o comentário daquele
+-- bloco manda editar a lista e não criar uma segunda, porque duas listas
+-- divergem. A migration 0678 reescreve a lista inteira pela cadeia; aqui ela já
+-- está aplicada antes deste ponto, que é o que o índice abaixo precisa.
 
 -- ─── Idempotência do aviso do gateway ───────────────────────────────────────
 --
