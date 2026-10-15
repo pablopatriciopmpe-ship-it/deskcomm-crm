@@ -1143,6 +1143,10 @@ export const AUDIT_ACTIONS = [
   // A marca foi removida: só limpa `ai_opt_out`; a conversa segue com a trava
   // de handoff de quem a pôs.
   "contacts.always_human_unmarked",
+  // Uma rodada do cron `pagamento-sonda-do-recibo` que ABRIU ou FECHOU aviso:
+  // a conferência do recibo do provedor parou (ou voltou) de funcionar. Rodada
+  // sem novidade não vira linha — mesmo padrão de "message.recover_stuck_run".
+  "pagamento.sonda_do_recibo_run",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

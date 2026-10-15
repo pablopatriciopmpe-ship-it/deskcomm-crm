@@ -14,10 +14,10 @@ O gateway escolhido não usa chave de API: o que identifica quem recebe é a tag
 pública da conta. O único segredo guardado é o endereço secreto por onde o aviso
 de pagamento entra, e ele é gerado aqui, não copiado de lugar nenhum.
 
-A regra que mais importa é do próprio banco: **nenhuma cobrança pode ser marcada
-como paga sem a conferência do recibo do provedor**. O aviso de pagamento desse
-gateway não é assinado, então um aviso inventado não basta — sem o recibo
-conferido, o banco recusa, e o produto não sai.
+A regra que mais importa é do próprio banco.
+**Nenhuma cobrança pode ser marcada como paga sem a conferência do recibo.**
+O aviso de pagamento desse gateway não é assinado, então um aviso inventado não
+basta: sem o recibo conferido, o banco recusa, e o produto não sai.
 
 Nada muda na tela ainda: é o schema que as próximas entregas usam. Quem não
 vender por PIX não vê diferença nenhuma, e nenhuma tabela existente foi

@@ -10189,6 +10189,12 @@ alter table public.agent_inbox_items
     -- pessoa da equipe (PATCH .../members/[userId]/email): a empresa fica
     -- sabendo pela Central — com o nome e a data, nunca o endereço.
     'email_de_login_trocado',
+    -- (migration 0680) a conferencia do recibo do provedor parou de
+    -- reconhecer a pagina. Enquanto durar, nenhuma venda e confirmada e
+    -- nenhum produto sai. Entra NESTA lista e no FIM dela, pelas duas razoes
+    -- de sempre (bloco unico por constraint, #159; e a janela de 2000
+    -- caracteres que tests/unit/midia-nao-lida.test.ts varre).
+    'conferencia_do_recibo_quebrada',
     'other'
   ));
 
@@ -57112,3 +57118,17 @@ insert into public.modulo_secoes_lgpd
         colunas_rotulo = excluded.colunas_rotulo,
         colunas_redigidas = excluded.colunas_redigidas,
         colunas_agora = excluded.colunas_agora;
+
+
+-- ---- aviso de conferencia do recibo quebrada (migration 0680) ----
+--
+-- O KIND entra na lista canonica de agent_inbox_items_kind_check, la em cima
+-- neste mesmo arquivo, e nao aqui: um bloco novo reconstruindo a mesma
+-- constraint quebra o update.sh de todo clone com vocabulario posterior
+-- (licao do #159). Aqui fica so o indice, que e proprio desta migration.
+--
+-- Um aviso aberto por organizacao: a pagina quebrada e a MESMA todo dia, e
+-- uma linha por rodada encheria a Central de copias do mesmo fato.
+create unique index if not exists agent_inbox_recibo_quebrado_aberto_unico
+  on public.agent_inbox_items (organization_id, kind)
+  where status = 'open' and kind = 'conferencia_do_recibo_quebrada';

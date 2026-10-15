@@ -128,6 +128,11 @@ CRONS="
 # pagar, e a diferença entre nascer às 5h ou às 17h não muda nada para quem paga.
 # Barato: uma consulta por instalação, e quem não tem molde nenhum sai na hora.
 50 5 * * *|60|api/v1/cron/recurring-entries
+# A SONDA DO RECIBO. A confirmação de pagamento lê o HTML do recibo do provedor,
+# porque não existe API para perguntar — e leitura de HTML de terceiro quebra sem
+# avisar. Uma vez ao dia basta: a quebra é permanente (eles mudaram a página), não
+# intermitente, e a janela de um dia é o preço de não bater no provedor à toa.
+10 6 * * *|60|api/v1/cron/pagamento-sonda-do-recibo
 "
 
 # CRONTAB_PATH é ponto de injeção do teste (tests/shell/scheduler-entrypoint.test.sh).
