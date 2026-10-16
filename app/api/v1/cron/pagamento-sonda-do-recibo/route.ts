@@ -49,6 +49,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { autorizaCron } from "@/lib/auth/cron-auth";
 import { logger } from "@/lib/logger";
+import { idsDeOrgsParadas } from "@/lib/organizacao/operante";
 import { conferirPeloRecibo, ErroDaInfinitePay } from "@/lib/pagamentos/provedores/infinitepay";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -94,9 +95,17 @@ export async function sondarRecibos(admin: SupabaseClient, requestId: string): P
     return vazio;
   }
 
+  // Organização parada não gasta nem fala. Aqui isso é literal: a sonda SAI PARA
+  // FORA, batendo no provedor. Uma organização suspensa por falta de pagamento
+  // que continuasse sondando custaria requisição e poderia abrir aviso numa
+  // Central que ninguém vai ler. O filtro vem ANTES da amostra, senão a parada
+  // ocuparia uma das vagas do teto e calaria uma organização que opera.
+  const paradas = new Set(await idsDeOrgsParadas(admin));
+
   // Uma por organização, a mais recente — a lista já vem ordenada.
   const porOrg = new Map<string, CobrancaSondavel>();
   for (const c of (data ?? []) as CobrancaSondavel[]) {
+    if (paradas.has(c.organization_id)) continue;
     if (!porOrg.has(c.organization_id)) porOrg.set(c.organization_id, c);
     if (porOrg.size >= TETO_DE_ORGS) break;
   }

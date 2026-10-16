@@ -192,8 +192,7 @@ grant select, insert, update, delete
 revoke all on public.payment_provider_credentials_safe from anon;
 grant select on public.payment_provider_credentials_safe to authenticated, service_role;
 
-drop policy if exists payment_provider_credentials_leitura
-  on public.payment_provider_credentials;
+drop policy if exists payment_provider_credentials_leitura on public.payment_provider_credentials;
 create policy payment_provider_credentials_leitura
   on public.payment_provider_credentials for select to authenticated
   using (

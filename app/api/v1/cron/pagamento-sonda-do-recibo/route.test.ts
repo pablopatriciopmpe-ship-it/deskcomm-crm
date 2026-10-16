@@ -47,10 +47,12 @@ const ORG_B = "bbbbbbbb-0000-4000-8000-000000000002";
 interface Mundo {
   cobrancas: Array<{ id: string; organization_id: string; transaction_nsu: string; amount_cents: number }>;
   resolvidos: Array<{ id: string }>;
+  orgsParadas: Array<{ id: string }>;
 }
 let m: Mundo;
 
 function responder(c: Cadeia): Resposta {
+  if (c.tabela === "organizations") return { data: m.orgsParadas };
   if (c.tabela === "payment_charges") return { data: m.cobrancas };
   if (c.tabela === "agent_inbox_items") {
     const op = operacao(c);
@@ -81,7 +83,7 @@ beforeEach(() => {
   h.duplicado = false;
   h.avisosAbertos = [];
   h.auditorias = [];
-  m = { cobrancas: [cobranca(ORG_A)], resolvidos: [] };
+  m = { cobrancas: [cobranca(ORG_A)], resolvidos: [], orgsParadas: [] };
   h.banco = bancoFalso(responder);
 });
 
@@ -171,5 +173,23 @@ describe("a auditoria", () => {
     await rodar();
     expect(h.auditorias).toHaveLength(1);
     expect(h.auditorias[0]!.action).toBe("pagamento.sonda_do_recibo_run");
+  });
+});
+
+describe("organização parada", () => {
+  it("não é sondada — a sonda sai para fora e org suspensa não gasta nem fala", async () => {
+    m.cobrancas = [cobranca(ORG_A), cobranca(ORG_B)];
+    m.orgsParadas = [{ id: ORG_A }];
+    const r = await rodar();
+    await expect(r.json()).resolves.toMatchObject({ data: { sondadas: 1 } });
+  });
+
+  it("a parada não ocupa vaga do teto, senão calaria quem opera", async () => {
+    // Se o filtro viesse DEPOIS da amostra, a parada entraria na conta e uma
+    // organização que opera ficaria de fora sem ninguém perceber.
+    m.cobrancas = [cobranca(ORG_A), ...Array.from({ length: TETO_DE_ORGS }, (_, i) => cobranca(`org-${i}`))];
+    m.orgsParadas = [{ id: ORG_A }];
+    const r = await rodar();
+    await expect(r.json()).resolves.toMatchObject({ data: { sondadas: TETO_DE_ORGS } });
   });
 });
