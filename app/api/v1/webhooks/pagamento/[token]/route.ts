@@ -35,7 +35,7 @@
  * aviso da mesma cobrança responde 200 sem reemitir evento. Gravar ANTES de
  * emitir é o que torna isso verdade — na ordem inversa, duas entregas.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import type { NextRequest } from "next/server";
 
@@ -44,6 +44,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { logger } from "@/lib/logger";
 import { avisoDaInfinitePay } from "@/lib/pagamentos/provedores/infinitepay";
+import { hashDoToken } from "@/lib/pagamentos/token-do-webhook";
 import { EVENTO_AVISO_DE_PAGAMENTO, PROVEDOR_INFINITEPAY } from "@/lib/pagamentos/vocabulario";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -67,9 +68,9 @@ export async function POST(req: NextRequest, { params }: Rota) {
   const naoExiste = () => fail("not_found", "Not found", 404, { requestId });
   const { token } = await params;
 
-  // O token tem formato conhecido (24 bytes em hex). Recusar o que nem parece
-  // token evita uma ida ao banco por requisição de varredura.
-  if (!/^[0-9a-f]{48}$/.test(token)) return naoExiste();
+  // O token é HMAC-SHA256 em hex (64). Recusar o que nem parece token evita uma
+  // ida ao banco por requisição de varredura.
+  if (!/^[0-9a-f]{64}$/.test(token)) return naoExiste();
 
   if (Number(req.headers.get("content-length") ?? "0") > LIMITE_DO_CORPO) {
     return fail("payload_too_large", "Aviso grande demais.", 413, { requestId });
@@ -87,8 +88,10 @@ export async function POST(req: NextRequest, { params }: Rota) {
   const admin = createAdminClient();
 
   // O banco guarda o HASH, nunca o token: ele autentica sozinho (o provedor não
-  // assina nada), e caminho de URL vai para log de proxy e de acesso.
-  const tokenSha256 = createHash("sha256").update(token).digest("hex");
+  // assina nada), e caminho de URL vai para log de proxy e de acesso. O valor
+  // em si é DERIVADO do INTERNAL_SECRET quando se precisa montar a URL
+  // (`lib/pagamentos/token-do-webhook.ts`), então não existe em lugar nenhum.
+  const tokenSha256 = hashDoToken(token);
 
   const { data: conta, error: erroDaConta } = await admin
     .from("payment_provider_credentials")

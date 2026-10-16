@@ -278,8 +278,18 @@ create table if not exists public.payment_charges (
   disputed_at timestamptz,
 
   -- O carimbo da segunda camada: quando o recibo público foi buscado e bateu.
-  -- Sem ele nenhuma linha pode ficar `paid` (ver o CHECK abaixo).
   conferido_pelo_recibo_em timestamptz,
+
+  -- A PORTA MANUAL. A conferência automática lê o HTML do recibo do provedor,
+  -- e isso quebra sozinho no dia em que eles mudarem a página. Sem uma segunda
+  -- origem de prova, o dono veria o dinheiro cair na conta dele e NÃO teria
+  -- como liberar a venda — fail-closed sem porta não é segurança, é trava.
+  --
+  -- Quem atesta é gente da equipe com acesso ao extrato, nunca o cliente:
+  -- comprovante mandado pelo comprador é a parte interessada falando de si, e
+  -- comprovante falso de PIX é fraude corriqueira no Brasil.
+  confirmado_a_mao_em timestamptz,
+  confirmado_a_mao_por uuid references auth.users(id) on delete set null,
 
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -356,8 +366,20 @@ alter table public.payment_charges
   add constraint payment_charges_conferida_antes_de_paga
   check (
     status not in ('paid', 'refunded', 'disputed')
+    -- A automática OU a atestação humana. Duas origens, as duas auditadas, e
+    -- nenhuma delas é o cliente.
     or conferido_pelo_recibo_em is not null
+    or confirmado_a_mao_em is not null
   );
+
+-- Quem atestou e quando andam juntos: um sem o outro é registro que não
+-- responde "quem disse que entrou?" — e é essa pergunta que a auditoria faz
+-- quando uma venda liberada à mão vira disputa.
+alter table public.payment_charges
+  drop constraint if exists payment_charges_atestacao_coerente;
+alter table public.payment_charges
+  add constraint payment_charges_atestacao_coerente
+  check ((confirmado_a_mao_em is null) = (confirmado_a_mao_por is null));
 
 -- O RECIBO SÓ CONFIRMA UMA COBRANÇA. Sem isto, o mesmo `transaction_nsu` serve
 -- para carimbar várias cobranças: quem tivesse o token do caminho mandaria o

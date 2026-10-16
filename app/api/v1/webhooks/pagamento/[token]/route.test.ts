@@ -33,7 +33,7 @@ import { POST } from "./route";
 
 const ORG = "cccccccc-0000-4000-8000-000000000001";
 const COBRANCA = "11111111-2222-4333-8444-555555555555";
-const TOKEN = "a".repeat(48);
+const TOKEN = "a".repeat(64);
 
 const AVISO = {
   amount: 100,

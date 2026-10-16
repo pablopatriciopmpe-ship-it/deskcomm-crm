@@ -28,6 +28,7 @@ import { pinoReintentoHandler } from "@/lib/channels/zernio/pino-reintento.handl
 import { automationRulesHandler } from "@/lib/automation/engine.handler";
 import { campanhaRespostaHandler } from "@/lib/campanhas/resposta.handler";
 import { cobrancaSinalHandler } from "@/lib/cobranca/sinal.handler";
+import { confirmarPagamentoHandler } from "@/lib/pagamentos/confirmar.handler";
 import { conversaoDeVendaHandler } from "@/lib/conversoes/envio.handler";
 import { conversaoDeQualificacaoHandler } from "@/lib/conversoes/qualificacao.handler";
 import { conversaoDeEtapaMetaHandler } from "@/lib/conversoes/etapa-meta.handler";
@@ -87,6 +88,10 @@ const PULA: EventHandler[] = [
   conversaoDeQualificacaoHandler,
   conversaoDeEtapaMetaHandler,
   pinoReintentoHandler,
+  // 0683 — confere o recibo no provedor e manda o link da entrega: sai para
+  // fora e custa. A cobranca fica `pending` e a reconciliacao a encontra quando
+  // a organizacao voltar; pagamento nao se perde por suspensao.
+  confirmarPagamentoHandler,
 ];
 
 const PREFIXO_DE_TESTE = "teste-org-parada";
