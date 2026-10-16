@@ -105,3 +105,5 @@ superfície do CRM atravessa essa aresta, e precisa responder três perguntas
 
 As três vezes o custo foi o mesmo: descobrir a aresta **durante** a
 implementação, com a peça já meio pronta.
+
+- `carteiras-transferencia.architecture.json`: atribuição respeita o escopo da carteira sob lock.

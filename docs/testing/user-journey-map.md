@@ -1534,6 +1534,22 @@ real, não pela tela).
 
 **Evidência:** ainda não versionada. A spec grava as duas fotos (o card com o link gerado e o painel da empresa com o mesmo link) na pasta `evidence/cobranca-link-pelo-dono/` quando roda; elas entram aqui, citadas, depois da primeira rodada verde do `e2e`.
 
+## J47 — Ler a conversa selecionada no tema escuro `[P1]` (2026-10-12)
+
+Contexto: relatado por uma operação real, com a captura — no tema escuro, a linha
+selecionada da lista do Inbox ficava quase branca e o nome do contato sumia. A
+causa: `bg-accent-50`, um degrau da rampa da marca, que tem o MESMO hex nos dois
+temas; o nome é `text-text`, claro no escuro. Passa a `bg-accent-soft`, o token
+que o tema troca (`components/inbox/ConversationListItem.tsx`).
+
+Spec: `tests/e2e/inbox-selecionada-no-escuro.spec.ts`.
+
+| # | Caso | Expectativa | Resultado |
+|---|------|-------------|-----------|
+| J47.1 | Tema escuro, conversa aberta pela lista | o nome do contato na linha selecionada tem contraste ≥ 4,5 contra o fundo EFETIVO (cor computada, camadas translúcidas compostas) | **PASS pela tela** — Evidência: `evidence/inbox-selecionada-no-escuro/01-selecionada-no-escuro.png` |
+| J47.2 | A classe da selecionada | `bg-accent-soft`, nenhum degrau fixo `bg-accent-50…950`; a não selecionada não ganha o fundo | **PASS (unit)** — `tests/unit/selecionada-legivel-no-escuro.test.tsx` |
+| J47.3 | Tema escuro, conversa aberta E marcada no lote, com o mouse ou o foco de teclado | a linha fica num tom só (o botão não pinta por cima do fundo da linha), o foco aparece como anel, e o nome e a prévia seguem com contraste ≥ 4,5 contra o fundo efetivo | **PASS pela tela** — Evidência: `evidence/inbox-selecionada-no-escuro/02-aberta-e-marcada-com-foco.png` |
+
 ## Jornadas exercitadas (instalação final, virgem)
 
 | Jornada | Resultado |

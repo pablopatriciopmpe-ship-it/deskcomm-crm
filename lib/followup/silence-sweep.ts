@@ -117,7 +117,7 @@ import {
   type NoDeGatilho,
 } from "./agent-followup-gate";
 import { emPausaDeReentrada, type BaseDaPausa, type FatosDaReentrada } from "./pausa-de-reentrada";
-import { contatosComRetornoVivo } from "./retorno-segura-o-fluxo";
+import { contatosQueORetornoSegura } from "./retorno-segura-o-fluxo";
 
 /**
  * Status que ocupam a vaga do índice único `idx_followup_enrollments_one_live`
@@ -153,8 +153,10 @@ export interface SilenceSweepDb {
    */
   loadSilentContactIds(orgId: string, cutoffIso: string, segments: string[], desdeIso?: string): Promise<string[]>;
   /**
-   * Contatos com RETORNO agendado vivo — quem tem um "te escrevo no dia 30" a
-   * caminho não entra no fluxo de silêncio. Ver `retorno-segura-o-fluxo.ts`.
+   * Contatos que o retorno SEGURA — o agendado vivo e o recém-executado (issue
+   * #2907): quem tem um "te escrevo no dia 30" a caminho, ou acabou de receber a
+   * mensagem dele, não entra no fluxo de silêncio por cima. Ver
+   * `retorno-segura-o-fluxo.ts`.
    */
   loadContatosComRetornoVivo(orgId: string): Promise<Set<string>>;
   /**
@@ -218,7 +220,7 @@ export interface SilenceSweepSummary {
   skipped_existing: number;
   /** Elegível por silêncio, mas com tentativa deste pointer iniciada há menos de `threshold_minutes` — ver o cooldown no cabeçalho do arquivo. */
   skipped_cooldown: number;
-  /** Silenciosos que ficaram de fora porque já têm um retorno agendado. */
+  /** Silenciosos que ficaram de fora porque o retorno ainda os segura (agendado ou recém-executado — #2907). */
   skipped_pending_return: number;
   /** Silenciosos que já passaram pelo fluxo e ainda estão na pausa de reentrada. */
   skipped_reentry_pause: number;
@@ -590,7 +592,7 @@ export function createSupabaseSilenceSweepDb(admin: SupabaseClient): SilenceSwee
     },
 
     loadContatosComRetornoVivo(orgId) {
-      return contatosComRetornoVivo(admin, orgId);
+      return contatosQueORetornoSegura(admin, orgId);
     },
 
     async loadTriggerNode(orgId, versionId) {

@@ -1719,6 +1719,40 @@ async function handleSessionStatus(
 }
 
 /**
+ * As formas em que a linha da mensagem ORIGINAL (a editada ou apagada) pode ter
+ * sido gravada em `messages.external_id`.
+ *
+ * ─── Por que o id do evento, sozinho, não acha a mensagem recebida ──────────
+ *
+ * `editedMessageId`/`revokedMessageId` chegam só com a CAUDA do id do WhatsApp
+ * (o bare, ex.: `3EB0…`), enquanto a mensagem RECEBIDA é gravada COMPLETA —
+ * `false_<chat>_<bare>`, o mesmo `p.id` que o webhook de entrada entregou. Casar
+ * só pelo id do evento acha a mensagem que NÓS mandamos (o envio grava o bare),
+ * mas nunca a que o cliente mandou: a linha recebida fica intocada e o evento
+ * "some" sem erro nenhum — o texto velho permanece na tela.
+ *
+ * O `chat` e o `fromMe` do PRÓPRIO evento reconstroem o composto. O prefixo é o
+ * mesmo do id do WAHA (`false_` para recebida, `true_` para enviada) e o chat
+ * vem de `payload.from`; assim o casamento EXIGE o chat — a mensagem de outra
+ * conversa tem outro composto e NÃO é tocada. A cauda preserva o caminho da
+ * mensagem enviada, que já funcionava (a linha do envio é bare).
+ */
+function formasDaMensagemOriginal(
+  idDoEvento: string,
+  chat: string,
+  fromMe: boolean | null | undefined,
+): string[] {
+  const bare = bareWaMessageId(idDoEvento);
+  const prefixo = fromMe ? "true" : "false";
+  // `idDoEvento` entra como veio (para o engine que já manda o composto), `bare`
+  // cobre o envio nosso, e a composta cobre a mensagem recebida.
+  const composta = chat ? `${prefixo}_${chat}_${bare}` : null;
+  return [
+    ...new Set([idDoEvento, bare, ...(composta ? [composta] : [])].filter((f) => f.length > 0)),
+  ];
+}
+
+/**
  * O autor editou a mensagem no aplicativo.
  *
  * O corpo é SOBRESCRITO, e não versionado: o que o CRM mostra tem que ser o que
@@ -1729,22 +1763,23 @@ async function handleSessionStatus(
  * `editedMessageId` é o id da mensagem ORIGINAL; o `id` do payload é o do
  * evento de edição. Casar pelo `id` não acharia nada — e o silêncio pareceria
  * "funcionou", que é exatamente o modo de falha que este arquivo já pagou caro
- * em outros lugares.
+ * em outros lugares. O alvo é resolvido em `formasDaMensagemOriginal` porque o
+ * id do evento traz só a cauda, não o composto com que a recebida foi gravada.
  */
 async function handleMessageEdited(
   admin: Admin,
   session: Session,
   p: WahaPayload,
 ): Promise<void> {
-  const alvo = bareWaMessageId(p.editedMessageId ?? "");
+  if (!p.editedMessageId) return;
   const corpo = typeof p.body === "string" ? p.body : null;
-  if (!alvo || corpo === null) return;
+  if (corpo === null) return;
 
   await admin
     .from("messages")
     .update({ body: corpo, edited_at: new Date().toISOString() })
     .eq("organization_id", session.organization_id)
-    .eq("external_id", alvo);
+    .in("external_id", formasDaMensagemOriginal(p.editedMessageId, p.from ?? "", p.fromMe));
 }
 
 /**
@@ -1761,14 +1796,28 @@ async function handleMessageRevoked(
   session: Session,
   p: WahaPayload,
 ): Promise<void> {
-  const alvo = bareWaMessageId(p.revokedMessageId ?? "");
-  if (!alvo) return;
+  if (!p.revokedMessageId) return;
+
+  // Forma de WAMessageRevokedBody / session.noweb.core.ts do WAHA; nenhum payload real de revoked medido nesta instalação.
+  // O chat vem em `after` (a protocolMessage de quem apagou), não no topo; o topo fica primeiro para não regredir num engine que mande flat.
+  const depois =
+    (p as { after?: { from?: unknown; fromMe?: unknown; id?: unknown } | null }).after ?? null;
+  const chat =
+    (typeof p.from === "string" && p.from) ||
+    (typeof depois?.from === "string" ? depois.from : "") ||
+    (typeof depois?.id === "string" ? (chatIdFromWaMessageId(depois.id) ?? "") : "");
+  const fromMe =
+    typeof p.fromMe === "boolean"
+      ? p.fromMe
+      : typeof depois?.fromMe === "boolean"
+        ? depois.fromMe
+        : undefined;
 
   await admin
     .from("messages")
     .update({ revoked_at: new Date().toISOString() })
     .eq("organization_id", session.organization_id)
-    .eq("external_id", alvo);
+    .in("external_id", formasDaMensagemOriginal(p.revokedMessageId, chat, fromMe));
 }
 
 /**

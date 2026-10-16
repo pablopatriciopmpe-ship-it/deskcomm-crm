@@ -115,7 +115,7 @@ Owner/Admin. Não dá para hospedar vários clientes numa conta só.
   stack SOBE com 2 GB — mas operar é outra coisa: são 7 contêineres, e o WAHA consome
   ~150 MB por sessão de WhatsApp além de ~300 MB de overhead do Node. Com 2 GB você roda
   no limite e vai precisar de swap. Ver `docs/runbooks/waha-hostgator.md`.
-- Portas **80** e **443** abertas (`ufw allow 80,443,22/tcp`).
+- Portas **80** e **443** abertas, e a **22022** do SSH (`ufw allow 22,22022,80,443/tcp`).
 - Docker + Docker Compose v2 — o `install.sh` instala o Docker sozinho se faltar (ver acima).
 
 ### VPS que já vem com proxy próprio (Hostinger, Coolify, Dokploy…)

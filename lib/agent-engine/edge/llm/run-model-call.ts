@@ -308,7 +308,7 @@ export interface RunModelCallDeps {
  */
 export type ResultadoDoModeloDoSeam = Pick<
   Awaited<ReturnType<typeof generateText>>,
-  'text' | 'usage' | 'response' | 'responseMessages' | 'steps' | 'toolCalls'
+  'text' | 'usage' | 'response' | 'responseMessages' | 'steps' | 'toolCalls' | 'finishReason'
 >;
 
 /**
@@ -933,8 +933,13 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
       let steps: Awaited<typeof streamed.steps>;
       let responseMessages: Awaited<typeof streamed.responseMessages>;
       let toolCalls: Awaited<typeof streamed.toolCalls>;
+      // `finishReason` ('stop' | 'length' | 'tool-calls' | ...). O
+      // ramo da assinatura monta o resultado à mão, então sem ele aqui o campo
+      // FALTARIA no runtime (generateText devolve sozinho) e a detecção de
+      // saída truncada ('length') cegaria exatamente no provedor de assinatura.
+      let finishReason: Awaited<typeof streamed.finishReason>;
       try {
-        [text, usage, response, steps, responseMessages, toolCalls] = await Promise.all([
+        [text, usage, response, steps, responseMessages, toolCalls, finishReason] = await Promise.all([
           streamed.text,
           streamed.usage,
           streamed.response,
@@ -942,6 +947,7 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
           streamed.responseMessages,
           // Lido por quem pede UMA ferramenta (propostas, valor da conversa).
           streamed.toolCalls,
+          streamed.finishReason,
         ]);
       } catch (erroDoSdk) {
         throw erroOriginalDoStream ?? erroDoSdk;
@@ -960,6 +966,7 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
         responseMessages,
         steps,
         toolCalls,
+        finishReason,
       } satisfies ResultadoDoModeloDoSeam;
       return resultadoDoStream as unknown as Awaited<ReturnType<typeof generateText>>;
     }

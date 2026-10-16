@@ -41,6 +41,7 @@ import { camposDoFunil } from "@/lib/leads/campos-do-funil";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { TimelineView } from "@/components/contacts/TimelineView";
 import { EditContactDialog } from "@/components/contacts/EditContactDialog";
+import { CartaoDaCarteira } from "@/components/contacts/CartaoDaCarteira";
 import { AnonymizeDialog } from "@/components/contacts/AnonymizeDialog";
 import { PropostasDeDado } from "@/components/contacts/PropostasDeDado";
 import { RoteirosDoContato } from "@/components/contacts/RoteirosDoContato";
@@ -479,6 +480,17 @@ export function ContactDetailClient({ contactId, paineisDeModulo = [] }: Props) 
               </div>
             </dl>
           </Card>
+          {/* CARTEIRA DO CLIENTE (#2591): de quem é este cliente. Fica na Visão
+              geral, junto dos dados que dizem "quem é esta pessoa" — quem atende
+              responde a pergunta antes de prometer o negócio, e o gerente muda o
+              dono aqui (o seletor só aparece para `manager`+; o gate real é o da
+              rota `PATCH /contacts/[id]/carteira`). Só de `agent` para cima: é
+              o piso do GET da carteira, e o `viewer` receberia 403. */}
+          {activeOrg && ROLE_RANK[activeOrg.role] >= ROLE_RANK.agent && (
+            <div className="mt-4">
+              <CartaoDaCarteira contactId={contactId} papelDoUsuario={activeOrg.role} />
+            </div>
+          )}
           <div className="mt-4">
             <RoteirosDoContato contactId={contactId} />
           </div>

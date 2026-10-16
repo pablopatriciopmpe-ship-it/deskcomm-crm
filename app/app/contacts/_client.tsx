@@ -18,13 +18,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useContactList } from "@/hooks/contacts/useContactList";
+import { useBulkContacts, type AcaoEmLoteDeContatos } from "@/hooks/contacts/useBulkContacts";
+import { useSelecaoEmLote } from "@/hooks/contacts/useSelecaoEmLote";
 import { ContactsTable } from "@/components/contacts/ContactsTable";
+import { BarraDeContatosEmLote } from "@/components/contacts/BarraDeContatosEmLote";
 import { PontoDaEtiqueta } from "@/components/tags/PontoDaEtiqueta";
 import { NewContactDialog } from "@/components/contacts/NewContactDialog";
 import { ImportContactsDialog } from "@/components/contacts/ImportContactsDialog";
 import { TAG_DE_CLIENTE } from "@/lib/contacts/cliente";
 import { type ModoDeEtiqueta } from "@/lib/inbox/marcador-da-conversa";
-import { useActiveOrg } from "@/hooks/auth/AuthProvider";
+import { useActiveOrg, usePermission } from "@/hooks/auth/AuthProvider";
 import { MergeDialog } from "@/components/contacts/MergeDialog";
 import { EmptyContacts } from "@/components/empty";
 import type { ContactOrderBy } from "@/lib/schemas/contacts";
@@ -88,6 +91,32 @@ export function ContactsListClient() {
     [search, tags, tagMode, source, soPessoais, orderBy, orderDir, limit],
   );
   const q = useContactList(filters);
+
+  // LOTE (#2484, fatia F3): a seleção múltipla e a barra de ações dos contatos.
+  // O portão de tela é o MESMO piso da edição individual (`contact.update` —
+  // agent+); quem só lê nem vê a barra. (A rota ainda valida por conta própria:
+  // este portão é de tela, a fonte da regra é a API.)
+  const podeAgirEmLote = usePermission("contact.update");
+  const podeMudarResponsavel = usePermission("contact.carteira");
+  const selecao = useSelecaoEmLote();
+  const lote = useBulkContacts();
+
+  const rodarLote = useCallback(
+    (args: AcaoEmLoteDeContatos) => {
+      const ids = Array.from(selecao.selecionados);
+      if (ids.length === 0) return;
+      lote.mutate(
+        { ids, ...args },
+        {
+          // A seleção é limpa depois do lote, aconteça o que acontecer: manter
+          // marcados os contatos recusados (de outra organização, inexistentes)
+          // deixaria a barra no lugar mensageando um lote que não existe mais.
+          onSuccess: () => selecao.limpar(),
+        },
+      );
+    },
+    [lote, selecao],
+  );
 
   const allContacts = useMemo(
     () => q.data?.pages.flatMap((p) => p.data) ?? [],
@@ -303,6 +332,23 @@ export function ContactsListClient() {
         )}
       </div>
 
+      {podeAgirEmLote && (
+        <BarraDeContatosEmLote
+          quantidade={selecao.quantidade}
+          pendente={lote.isPending}
+          onAdicionarEtiqueta={(tag) => rodarLote({ action: "tag", op: "add", tag })}
+          onRemoverEtiqueta={(tag) => rodarLote({ action: "tag", op: "remove", tag })}
+          onMudarResponsavel={
+            podeMudarResponsavel
+              ? (donoUserId) =>
+                  rodarLote({ action: "carteira", dono_user_id: donoUserId, origem: "manual" })
+              : undefined
+          }
+          onPreencherCampo={(chave, valor) => rodarLote({ action: "custom-field", chave, valor })}
+          onLimpar={selecao.limpar}
+        />
+      )}
+
       {q.isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -333,6 +379,16 @@ export function ContactsListClient() {
               orderBy={orderBy}
               orderDir={orderDir}
               onSort={handleSort}
+              // Sem `contact.update` não há barra, então as caixas seriam um
+              // controle que marca e não leva a nada: a tabela só as desenha
+              // quando recebe `onAlternarSelecao`.
+              selecionados={podeAgirEmLote ? selecao.selecionados : undefined}
+              onAlternarSelecao={podeAgirEmLote ? selecao.alternar : undefined}
+              onSelecionarTodosVisiveis={
+                podeAgirEmLote
+                  ? () => selecao.selecionarTodos(allContacts.map((c) => c.id))
+                  : undefined
+              }
             />
           </Card>
           <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">

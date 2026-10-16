@@ -21,6 +21,7 @@ import { idsDoContatoEGemeos } from "@/lib/channels/contato-por-telefone";
 import { logger } from "@/lib/logger";
 
 import { flowGraphSchema, type FlowGraph, type FlowNode, type ReplySaveTo } from "./graph-schema";
+import { TETO_DE_PASSOS_DO_MOTOR } from "./custo-no-motor";
 import {
   ACTION_RECHECK_MS,
   BACKOFF_MS,
@@ -63,7 +64,10 @@ import type { EventRow } from "@/lib/event-log/dispatcher";
 import { quandoDoRetornoVivo, reavaliarDepoisDoRetorno } from "./retorno-segura-o-fluxo";
 import { triggerConfigSchema } from "./api-schemas";
 
-const MAX_STEPS = 80;
+// O teto de ticks do relógio. O número mora em `custo-no-motor.ts` porque a
+// publicação também precisa dele (#2965): contar o caminho linear pelos mesmos
+// ticks que o motor gasta é o que impede um fluxo de publicar e morrer no meio.
+const MAX_STEPS = TETO_DE_PASSOS_DO_MOTOR;
 const CLAIM_LEASE_SECONDS = 120;
 const DEFAULT_CLAIM_LIMIT = 20;
 const MAX_ERROR_LEN = 300;

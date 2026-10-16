@@ -89,6 +89,7 @@ export async function POST(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   });
 
   if (error) {
+    if (error.code === "42501") return fail("forbidden", t("Esta conversa não está na sua carteira."), 403, { requestId });
     return fail("internal_error", error.message, 500, { requestId });
   }
   const row = data?.[0];

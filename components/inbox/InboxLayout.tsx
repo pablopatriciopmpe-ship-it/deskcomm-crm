@@ -2,7 +2,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/hooks/auth/AuthProvider";
+import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
+import { useBulkConversations, type AcaoEmLote } from "@/hooks/inbox/useBulkConversations";
+import { useSelecaoEmLote } from "@/hooks/inbox/useSelecaoEmLote";
 import { estadoDaJanela } from "@/lib/channels/janela";
 import { motivoDaJanelaFechada, motivoDoContato } from "@/lib/inbox/motivo-do-envio-bloqueado";
 import { JanelaFechadaAviso } from "@/components/inbox/JanelaFechadaAviso";
@@ -17,6 +19,7 @@ import {
 } from "@/hooks/inbox/useConversationsRealtime";
 import { useConversation, isNotFound } from "@/hooks/inbox/useConversation";
 import { ConversationList } from "./ConversationList";
+import { BarraDeAcoesEmLote } from "./BarraDeAcoesEmLote";
 import { InboxFilters, type InboxFiltersValue, type InboxTab } from "./InboxFilters";
 import { ChatThread } from "./ChatThread";
 import { Composer, type ComposerHandle } from "./Composer";
@@ -264,6 +267,9 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   const filters: ConversationsFilters = useMemo(
     () => ({
       ...tabToFilter(filterValue.tab, automaticoDaOrg),
+      // O atendente escolhido pelo gerente. A aba Minhas já traz `assigned_to=me`,
+      // e esse valor da aba vence (o seletor nem aparece ali).
+      assigned_to: tabToFilter(filterValue.tab, automaticoDaOrg).assigned_to ?? filterValue.assigned_to,
       // A tela NÃO pede o que a rota recusa: o hook trata falha com
       // `showApiError`, então digitar a primeira letra de qualquer busca faria
       // piscar um erro na cara de quem digita. A regra é a MESMA que o schema
@@ -280,6 +286,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
     [
       filterValue.tab,
       automaticoDaOrg,
+      filterValue.assigned_to,
       filterValue.search,
       filterValue.channel_session_id,
       filterValue.tag,
@@ -339,6 +346,33 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
 
   const claim = useClaimConversation();
   const close = useCloseConversation();
+
+  // LOTE (#2484, F1): a seleção múltipla e a barra de ações da Inbox. A
+  // permissão de ESCRITA continua sendo a do `usePermission` — quem tem
+  // `inbox.reply` pode marcar e agir em lote; para o `viewer` a seleção nem
+  // aparece. (A rota ainda valida por conta própria: este portão é de tela,
+  // a fonte da regra é a API.)
+  const podeAgirEmLote = usePermission("inbox.reply");
+  const selecao = useSelecaoEmLote();
+  const lote = useBulkConversations();
+
+  const rodarLote = useCallback(
+    (action: AcaoEmLote, toUserId?: string, reason?: string) => {
+      const ids = Array.from(selecao.selecionados);
+      if (ids.length === 0) return;
+      lote.mutate(
+        { ids, action, to_user_id: toUserId, reason },
+        {
+          // A seleção é limpa depois do lote, aconteça o que acontecer:
+          // manter marcadas as conversas recusadas (de outra organização,
+          // inexistentes) deixaria a barra no lugar mensageando um lote que
+          // não existe mais.
+          onSuccess: () => selecao.limpar(),
+        },
+      );
+    },
+    [lote, selecao],
+  );
 
   // A leitura da conversa aberta é do upstream e fica: sem ela o contador de
   // não-lidas nunca zera para quem abre a conversa.
@@ -631,6 +665,19 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
       >
         <BotaoIniciarConversa />
         <InboxFilters value={filterValue} onChange={setFilterValue} />
+        {podeAgirEmLote && (
+          <BarraDeAcoesEmLote
+            quantidade={selecao.quantidade}
+            pendente={lote.isPending}
+            onFechar={() => rodarLote("close")}
+            onArquivar={() => rodarLote("archive")}
+            onMarcarComoLida={() => rodarLote("mark-read")}
+            onPausarIa={() => rodarLote("pause-ai")}
+            onDevolverAoAutomatico={() => rodarLote("reactivate-bot")}
+            onTransferir={(toUserId, reason) => rodarLote("transfer", toUserId, reason)}
+            onLimpar={selecao.limpar}
+          />
+        )}
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
             listQuery={listQ}
@@ -639,6 +686,16 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
             onSelect={handleSelect}
             onVisibleChange={handleVisibleChange}
             onLimparFiltros={limparFiltrosAuxiliares}
+            selecionados={selecao.selecionados}
+            onAlternarSelecao={podeAgirEmLote ? selecao.alternar : undefined}
+            onSelecionarTodosVisiveis={
+              podeAgirEmLote
+                ? () =>
+                    selecao.selecionarTodos(
+                      (listQ.data?.pages.flatMap((p) => p.data) ?? []).map((c) => c.id),
+                    )
+                : undefined
+            }
           />
         </div>
       </div>

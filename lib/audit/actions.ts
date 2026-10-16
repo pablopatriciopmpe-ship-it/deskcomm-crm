@@ -270,10 +270,11 @@ export const AUDIT_ACTIONS = [
   // Rótulo interno do canal (channel_sessions.display_name); nada vai ao
   // provedor. Emitida por app/api/v1/channel-sessions/[id]/name.
   "channel.renamed",
-  // A janela de manutenção (#2388): criar e cancelar são mutações da tela e
-  // auditam como toda mutação. A pausa e a retomada que a janela aplica saem
-  // como `channel.disabled`/`channel.enabled`, com `origem: schedule`.
+  // A janela de manutenção (#2388): criar, editar e cancelar são mutações da
+  // tela e auditam como toda mutação. A pausa e a retomada que a janela aplica
+  // saem como `channel.disabled`/`channel.enabled`, com `origem: schedule`.
   "channel.schedule_created",
+  "channel.schedule_updated",
   "channel.schedule_cancelled",
   // Chamada de voz WhatsApp (WaCalls, spec 18) — pareamento do segundo
   // dispositivo vinculado, opt-in por org. Admin only.
@@ -1137,12 +1138,23 @@ export const AUDIT_ACTIONS = [
   // dedicada `PATCH /contacts/[id]/carteira` (#2591) — a escrita é do servidor,
   // então o audit é a única trilha de quem mudou o dono.
   "contact.carteira_changed",
+  // O admin da plataforma exportou o INVENTÁRIO das instalações em CSV (#2777).
+  // É leitura, mas é leitura EM ESCALA DE PLATAFORMA: grava quem, quando, QUANTO
+  // saiu, se o teto cortou e QUE filtros valiam — nunca o texto da busca, que é
+  // dado de quem foi buscado.
+  "platform.tenants_exported",
   // Marca permanente "sempre atendimento humano" (issue 2379): `ai_opt_out`
   // ligado na ficha do contato — a devolução (manual ou automática) não a desfaz.
   "contacts.always_human_marked",
   // A marca foi removida: só limpa `ai_opt_out`; a conversa segue com a trava
   // de handoff de quem a pôs.
   "contacts.always_human_unmarked",
+  // O operador carregou a imagem que a Resposta rápida passa a enviar junto
+  // com o texto — `POST /message-templates/:id/midias` (#2526). A REMOÇÃO não
+  // tem código próprio: ela acontece dentro do `template.updated` (campo
+  // `removidas` no metadata) ou dentro do `template.deleted`, que são os atos
+  // em que a imagem sai de fato.
+  "template.media_added",
   // Uma rodada do cron `pagamento-sonda-do-recibo` que ABRIU ou FECHOU aviso:
   // a conferência do recibo do provedor parou (ou voltou) de funcionar. Rodada
   // sem novidade não vira linha — mesmo padrão de "message.recover_stuck_run".

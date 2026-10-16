@@ -9,6 +9,7 @@ import { adiarAteAJanelaAbrir } from "@/lib/automation/janela-do-canal";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { reportarEnvio, type MensagemEnviada } from "@/lib/automation/desfecho-do-envio";
 import { checarGuardasDeContato } from "@/lib/automation/guarda-do-contato";
+import { mensagemDeErro } from "@/lib/automation/actions/erro-legivel";
 
 async function postponeUntil(ctx: ActionCtx, config: Record<string, unknown>): Promise<string | null> {
   const contato = checarGuardasDeContato(ctx);
@@ -68,7 +69,7 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
     return {
       type: "send_whatsapp_message",
       status: "failed",
-      error: err instanceof Error ? err.message : String(err),
+      error: mensagemDeErro(err),
     };
   }
 }

@@ -752,6 +752,32 @@ export class WahaClient {
     return res.json();
   }
 
+  /**
+   * O visto azul: marca como lida a conversa (`Send Seen` da API do WAHA).
+   *
+   * `POST /api/sendSeen` — a sessão vai no CORPO, como em `sendText`, e não no
+   * caminho, como a família de presença (`/api/{session}/presence`). Sem
+   * `messageIds`, o pedido é "li esta conversa": o WAHA marca as não lidas dos
+   * últimos 7 dias (até 30 numa conversa individual, 100 num grupo), que é o
+   * que "respondi, então li" quer dizer — e sem precisar navegar pelos ids que
+   * só o webhook conhece.
+   *
+   * LANÇA `waha_<status>`, como os vizinhos, e a decisão de falhar macio é de
+   * QUEM CHAMA: `marcarConversaComoLida` (`./send`) engole e loga, e o põe
+   * DEPOIS do envio para a resposta nunca esperar por enfeite de conversa.
+   */
+  async sendSeen(session: string, chatId: string): Promise<void> {
+    const res = await this.fetchComTeto(`${this.baseUrl}/api/sendSeen`, {
+      method: "POST",
+      headers: {
+        "X-Api-Key": this.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ session, chatId }),
+    });
+    if (!res.ok) throw new Error(`waha_${res.status}`);
+  }
+
   /** O id completo identifica a mensagem no WAHA; o id curto do sendText não basta. */
   async editMessage(session: string, chatId: string, messageId: string, text: string): Promise<void> {
     const path = `/api/${encodeURIComponent(session)}/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}`;
