@@ -1,9 +1,9 @@
--- manifest: **O aviso de que a conferência do recibo parou de funcionar.** A confirmação de pagamento da 0678 não vem de API — o `payment_check` do provedor é rota morta e o webhook não é assinado —, então ela é leitura do recibo PÚBLICO do provedor. Isso quebra sozinho no dia em que eles mudarem o layout da página, e quebra para o lado seguro: nenhuma venda é confirmada, nenhum produto sai, e **nada reclama**. Este kind é o que faz esse silêncio virar aviso na Central. Entra na lista CANÔNICA de `agent_inbox_items_kind_check`, no fim e antes de `other`, pelas duas razões que o próprio bloco declara (bloco único por constraint, lição do #159; e a janela de 2000 caracteres que `tests/unit/midia-nao-lida.test.ts` varre). Sem backfill: nenhuma linha usa o kind novo.
--- 0680: o aviso de que a conferência do recibo parou de funcionar
+-- manifest: **O aviso de que a conferência do recibo parou de funcionar.** A confirmação de pagamento da 0683 não vem de API — o `payment_check` do provedor é rota morta e o webhook não é assinado —, então ela é leitura do recibo PÚBLICO do provedor. Isso quebra sozinho no dia em que eles mudarem o layout da página, e quebra para o lado seguro: nenhuma venda é confirmada, nenhum produto sai, e **nada reclama**. Este kind é o que faz esse silêncio virar aviso na Central. Entra na lista CANÔNICA de `agent_inbox_items_kind_check`, no fim e antes de `other`, pelas duas razões que o próprio bloco declara (bloco único por constraint, lição do #159; e a janela de 2000 caracteres que `tests/unit/midia-nao-lida.test.ts` varre). Sem backfill: nenhuma linha usa o kind novo.
+-- 0685: o aviso de que a conferência do recibo parou de funcionar
 --
 -- ─── O defeito que este kind existe para tornar visível ─────────────────────
 --
--- A 0678 decidiu que nenhuma cobrança fica `paid` sem `conferido_pelo_recibo_em`
+-- A 0683 decidiu que nenhuma cobrança fica `paid` sem `conferido_pelo_recibo_em`
 -- (CHECK `payment_charges_conferida_antes_de_paga`). Essa conferência é leitura
 -- do HTML de `recibo.infinitepay.io`, e não API: não existe API para perguntar —
 -- o `payment_check` do provedor devolve a mesma resposta para parâmetros
@@ -64,7 +64,7 @@ alter table public.agent_inbox_items
     'canal_pausado',
     'cobranca',
     'email_de_login_trocado',
-    -- (migration 0680) a conferência do recibo do provedor parou de reconhecer
+    -- (migration 0685) a conferência do recibo do provedor parou de reconhecer
     -- a página. Enquanto durar, nenhuma venda é confirmada e nenhum produto sai.
     'conferencia_do_recibo_quebrada',
     'other'

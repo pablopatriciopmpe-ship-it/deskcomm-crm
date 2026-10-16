@@ -841,7 +841,7 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "endpoint oficial da Google Meet REST API (`POST /v2/spaces`, em `lib/agenda/google/transport.ts`): é o DESTINO do request que cria a sala de reunião com acesso aberto (#2063), com o token da própria organização. Diferente de `meet.google.com` — que é o LINK de convite, e por isso entra como PLATAFORMA em CONFERÊNCIA —, este é host que o produto BUSCA: trocar pelo domínio do revendedor faria a chamada não chegar a lugar nenhum, e a sala nunca seria criada.",
   },
-  // ── cobrança avulsa por PIX: a organização cobra o cliente dela (0678) ──
+  // ── cobrança avulsa por PIX: a organização cobra o cliente dela (0683) ──
   "api.checkout.infinitepay.io": {
     categoria: "FORNECEDOR",
     motivo:
