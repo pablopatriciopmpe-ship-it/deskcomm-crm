@@ -35,7 +35,7 @@
  * aviso da mesma cobrança responde 200 sem reemitir evento. Gravar ANTES de
  * emitir é o que torna isso verdade — na ordem inversa, duas entregas.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { NextRequest } from "next/server";
 
@@ -51,6 +51,14 @@ export const dynamic = "force-dynamic";
 
 const LIMITE_DO_CORPO = 65_536;
 const RECUSAS_POR_MINUTO = 120;
+/**
+ * Teto de avisos ACEITOS por IP. O balde de recusas sozinho não protegia nada
+ * contra quem TEM um token válido vazado: cada aviso com `invoice_slug` novo
+ * criava linha em `webhook_events_log` e em `event_log`, sem limite, até
+ * entupir banco e fila. Folgado de propósito — o provedor legítimo reentrega,
+ * mas não dispara milhares por minuto.
+ */
+const AVISOS_POR_MINUTO = 600;
 
 type Rota = { params: Promise<{ token: string }> };
 
@@ -67,12 +75,25 @@ export async function POST(req: NextRequest, { params }: Rota) {
     return fail("payload_too_large", "Aviso grande demais.", 413, { requestId });
   }
 
+  const balde = ipDoCliente(req.headers) ?? "sem-proxy";
+  const teto = await checkRateLimit(`pagamento-webhook:${balde}`, AVISOS_POR_MINUTO, 60);
+  if (!teto.allowed) {
+    return fail("rate_limited", "Muitos avisos.", 429, {
+      requestId,
+      headers: { "Retry-After": "60" },
+    });
+  }
+
   const admin = createAdminClient();
+
+  // O banco guarda o HASH, nunca o token: ele autentica sozinho (o provedor não
+  // assina nada), e caminho de URL vai para log de proxy e de acesso.
+  const tokenSha256 = createHash("sha256").update(token).digest("hex");
 
   const { data: conta, error: erroDaConta } = await admin
     .from("payment_provider_credentials")
     .select("id, organization_id, provider, is_active")
-    .eq("webhook_path_token", token)
+    .eq("webhook_path_token_sha256", tokenSha256)
     .maybeSingle();
 
   if (erroDaConta) {
@@ -88,7 +109,6 @@ export async function POST(req: NextRequest, { params }: Rota) {
   if (conta && conta.provider !== PROVEDOR_INFINITEPAY) return naoExiste();
 
   if (!conta || !conta.is_active) {
-    const balde = ipDoCliente(req.headers) ?? "sem-proxy";
     const taxa = await checkRateLimit(`pagamento-webhook-recusado:${balde}`, RECUSAS_POR_MINUTO, 60);
     if (!taxa.allowed) {
       return fail("rate_limited", "Muitos avisos recusados seguidos.", 429, {
@@ -123,6 +143,39 @@ export async function POST(req: NextRequest, { params }: Rota) {
     return fail("invalid_payload", "Forma inesperada.", 400, { requestId });
   }
 
+  // A COBRANÇA TEM DE SER DESTA ORGANIZAÇÃO. O `order_nsu` vem do corpo, que é
+  // de fora, e ia direto para `event_log.entity_id` sem ninguém perguntar de
+  // quem era. Com o token da organização A e o id de uma cobrança da B nascia
+  // um evento incoerente — `organization_id` de A apontando para entidade de B.
+  // É a regra da casa que este arquivo cita no cabeçalho: resolvido de fonte
+  // confiável, NUNCA do body.
+  //
+  // Também resolve o `entity_id` ser `uuid`: id que não existe aqui não vira
+  // INSERT, então um aviso torto não estoura 22P02 nem vira reentrega eterna.
+  const { data: cobranca, error: erroDaCobranca } = await admin
+    .from("payment_charges")
+    .select("id")
+    .eq("id", aviso.data.order_nsu)
+    .eq("organization_id", conta.organization_id)
+    .maybeSingle();
+
+  if (erroDaCobranca) {
+    // Pode ser `22P02` (o order_nsu nem é uuid) ou falha de leitura. O primeiro
+    // é aviso que não é nosso; o segundo merece reentrega. Separar os dois evita
+    // tanto a fila eterna quanto a venda perdida.
+    if (erroDaCobranca.code === "22P02") {
+      logger.warn("pagamento.aviso_com_referencia_estranha", { organizacao: conta.organization_id });
+      return ok({ recebido: true, ignorado: true }, { requestId });
+    }
+    logger.error("pagamento.leitura_da_cobranca_falhou", { erro: erroDaCobranca.message });
+    return fail("service_unavailable", "Indisponível.", 503, { requestId });
+  }
+
+  if (!cobranca) {
+    logger.warn("pagamento.aviso_de_cobranca_desconhecida", { organizacao: conta.organization_id });
+    return ok({ recebido: true, ignorado: true }, { requestId });
+  }
+
   // GRAVA ANTES DE EMITIR. O 23505 deste insert é a idempotência: na ordem
   // inversa, a reentrega emitiria um segundo evento e o produto sairia duas
   // vezes. `raw_body` fica de fora de propósito — o aviso leva receipt_url, que
@@ -143,36 +196,43 @@ export async function POST(req: NextRequest, { params }: Rota) {
     },
   });
 
-  if (erroDoLog) {
-    if (erroDoLog.code === "23505") {
-      // Já recebido. Responder 200 é o que faz o provedor parar de reentregar.
-      return ok({ recebido: true, repetido: true }, { requestId });
-    }
+  const repetido = erroDoLog?.code === "23505";
+  if (erroDoLog && !repetido) {
     logger.error("pagamento.webhook_log_falhou", { erro: erroDoLog.message });
     return fail("service_unavailable", "Indisponível.", 503, { requestId });
   }
 
-  // `event_log.entity_id` é `uuid`, e o `order_nsu` é texto vindo de fora. Um
-  // valor que não seja UUID faria o INSERT estourar com 22P02, a rota devolver
-  // 503 e o provedor reentregar para sempre — um aviso torto viraria fila
-  // infinita. O que não tem a nossa forma não é cobrança nossa: fica gravado no
-  // log (serve de evidência) e não emite evento.
-  const EH_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!EH_UUID.test(aviso.data.order_nsu)) {
-    logger.warn("pagamento.aviso_com_referencia_estranha", {
-      organizacao: conta.organization_id,
-    });
-    return ok({ recebido: true, ignorado: true }, { requestId });
+  // ⚠️ REPETIDO NÃO É "NADA A FAZER". São dois INSERTs sem transação: se o
+  // primeiro passou e o segundo falhou, a resposta foi 503 pedindo reentrega —
+  // e a reentrega caía no 23505 acima e respondia 200 SEM emitir o evento. O
+  // retry do provedor neutralizava a si mesmo, e o pagamento ficava registrado
+  // com o produto nunca entregue.
+  //
+  // Por isso a repetição também procura o evento, e só emite se ele faltar. A
+  // corrida que sobra (dois avisos simultâneos lendo o vazio) é estreita e o
+  // consumidor é idempotente pelo estado da cobrança, não pelo evento.
+  if (repetido) {
+    const { data: jaEmitido, error: erroDaBusca } = await admin
+      .from("event_log")
+      .select("id")
+      .eq("organization_id", conta.organization_id)
+      .eq("event_type", EVENTO_AVISO_DE_PAGAMENTO)
+      .eq("entity_id", cobranca.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (erroDaBusca) {
+      logger.error("pagamento.busca_do_evento_falhou", { erro: erroDaBusca.message });
+      return fail("service_unavailable", "Indisponível.", 503, { requestId });
+    }
+    if (jaEmitido) return ok({ recebido: true, repetido: true }, { requestId });
   }
 
   const { error: erroDoEvento } = await admin.from("event_log").insert({
     organization_id: conta.organization_id,
     event_type: EVENTO_AVISO_DE_PAGAMENTO,
     entity_kind: "payment_charge",
-    // O id da cobrança é o que NÓS mandamos como order_nsu. Resolver por aqui, e
-    // não por nada que o aviso diga sobre valor ou situação, é o que mantém o
-    // aviso no papel de cutucão.
-    entity_id: aviso.data.order_nsu,
+    entity_id: cobranca.id,
     payload: {
       invoice_slug: aviso.data.invoice_slug,
       transaction_nsu: aviso.data.transaction_nsu,
@@ -181,12 +241,12 @@ export async function POST(req: NextRequest, { params }: Rota) {
   });
 
   if (erroDoEvento) {
-    // O log já tem a linha, então a reentrega cairia no 23505 e não reemitiria.
-    // Devolver 503 faz o provedor tentar de novo, mas quem cura de verdade é a
-    // reconciliação, que relê cobrança pendente sem depender de aviso nenhum.
+    // Agora a reentrega CURA: o ramo do repetido acima procura o evento e, não
+    // achando, emite. Quem cura por último é a reconciliação, que relê cobrança
+    // pendente sem depender de aviso nenhum.
     logger.error("pagamento.evento_nao_emitido", {
       erro: erroDoEvento.message,
-      cobranca: aviso.data.order_nsu,
+      cobranca: cobranca.id,
     });
     return fail("service_unavailable", "Indisponível.", 503, { requestId });
   }

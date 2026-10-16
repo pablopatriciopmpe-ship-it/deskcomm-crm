@@ -1,4 +1,4 @@
--- manifest: **Cobrança avulsa dentro do CRM: a organização cobra o cliente dela e o pedido nasce da conversa.** O módulo `cobranca` (0583/0601) é o dono da INSTALAÇÃO cobrando as organizações — assinatura, chave única, `platform_config`. Aqui é o oposto: cada ORGANIZAÇÃO cobra os clientes dela. Três peças: (A) `payment_provider_credentials`, a conta de gateway POR organização — e no provedor escolhido (InfinitePay) **não há chave de API**, então o que se guarda é o `handle` (público) e o `webhook_path_token` (segredo NOSSO), sem trio de cifra; (B) `payment_charges`, uma linha por TENTATIVA, que é onde mora o ciclo de vida fino (`expired`, `disputed`) que `orders.status` não tem e cujo CHECK não se alarga (lição da 0623), mais o carimbo da conferência pelo recibo, SEM o qual nenhuma linha pode ficar `paid`; (C) `order_items`, item com SNAPSHOT de nome e código, no formato de `crm_proposal_items`. Consistência entre organizações por GATILHO comparando com o pai (idioma da 0464), não por chave composta. Mais o índice único PARCIAL de idempotência do webhook, que o geral (`idx_webhook_events_external_id`) não é. Sem backfill: nenhuma linha existe.
+-- manifest: **Cobrança avulsa dentro do CRM: a organização cobra o cliente dela e o pedido nasce da conversa.** O módulo `cobranca` (0583/0601) é o dono da INSTALAÇÃO cobrando as organizações — assinatura, chave única, `platform_config`. Aqui é o oposto: cada ORGANIZAÇÃO cobra os clientes dela. Três peças: (A) `payment_provider_credentials`, a conta de gateway POR organização — e no provedor escolhido (InfinitePay) **não há chave de API**, então o que se guarda é o `handle` (público) e o SHA-256 do token do webhook (segredo NOSSO), sem trio de cifra; (B) `payment_charges`, uma linha por TENTATIVA, que é onde mora o ciclo de vida fino (`expired`, `disputed`) que `orders.status` não tem e cujo CHECK não se alarga (lição da 0623), mais o carimbo da conferência pelo recibo, SEM o qual nenhuma linha pode ficar `paid`; (C) `order_items`, item com SNAPSHOT de nome e código, no formato de `crm_proposal_items`. Consistência entre organizações por GATILHO comparando com o pai (idioma da 0464), não por chave composta. Mais o índice único PARCIAL de idempotência do webhook, que o geral (`idx_webhook_events_external_id`) não é. Sem backfill: nenhuma linha existe.
 -- 0683: cobrança avulsa por organização — conta do gateway, tentativa de cobrança e item do pedido
 --
 -- ─── O defeito ───────────────────────────────────────────────────────────────
@@ -35,8 +35,8 @@
 --
 -- Por isso NÃO existe aqui o trio `*_encrypted`/`*_iv`/`*_tag` de
 -- `ai_provider_credentials`. Cifra que não protege nada continua sendo
--- superfície à toa. O único segredo é o `webhook_path_token`, que é NOSSO, e
--- ele é gerado aqui.
+-- superfície à toa. O único segredo é o token do caminho do webhook, que é
+-- NOSSO — e ele entra aqui como SHA-256, nunca em claro (ver a coluna).
 --
 -- ─── A trava que substitui a assinatura do webhook ──────────────────────────
 --
@@ -48,7 +48,7 @@
 --
 -- O que sobra são duas camadas independentes, e as duas são obrigatórias:
 --
---   1. o `webhook_path_token` no CAMINHO da rota, que é servidor-a-servidor e
+--   1. o token no CAMINHO da rota, que é servidor-a-servidor e
 --      nunca aparece no navegador do comprador (mesmo idioma das fontes de
 --      captação do núcleo);
 --   2. a conferência cruzada buscando o `receipt_url` que vem no aviso — página
@@ -62,9 +62,11 @@
 --
 -- ─── As três peças ──────────────────────────────────────────────────────────
 --
--- (A) A CONTA é por organização. O `handle` é público; o `webhook_path_token`
---     não, e é por isso que a tabela-base continua fechada a `authenticated`
---     (disciplina da 0583) e a tela lê pela view `_safe`.
+-- (A) A CONTA é por organização. O `handle` é público; o token do webhook não,
+--     e por isso ele mora aqui só como HASH. A tela lê pela view `_safe`, e o
+--     `authenticated` recebe SELECT apenas nas COLUNAS que não são segredo —
+--     grant por coluna, porque a view é `security_invoker` e sem privilégio na
+--     base o leitor levaria `permission denied` na própria view.
 --
 --     `pix_conferido_em` existe por um defeito medido do provedor: a chave PIX
 --     cadastrada na conta **não é verificável pela API**. Sem ela o link nasce
@@ -111,9 +113,19 @@ create table if not exists public.payment_provider_credentials (
   -- recebe. Fica na tabela fechada por morar ao lado do token, não por si.
   handle text not null,
 
-  -- O ÚNICO segredo desta tabela, e ele é nosso: é o que autentica o aviso do
-  -- gateway, já que o provedor não assina nada.
-  webhook_path_token text not null default encode(extensions.gen_random_bytes(24), 'hex'),
+  -- O SHA-256 do token que vai no caminho do webhook — nunca o token em claro.
+  --
+  -- Em `tenant_integrations` o token de caminho é texto puro porque lá ele só
+  -- LOCALIZA a organização: quem autentica é `webhook_secret_*`, conferido sobre
+  -- o corpo. Aqui não há segredo nenhum para conferir — a InfinitePay não assina
+  -- o aviso —, então este token **autentica sozinho**. Token portador guardado
+  -- em claro é o anti-pattern 13 da casa, e o caminho de uma URL ainda vai para
+  -- log de proxy, de acesso e de diagnóstico da VPS.
+  --
+  -- Por isso o formato é o de `api_tokens`: hash no banco, plaintext mostrado
+  -- UMA vez na criação, para colar na configuração do provedor. Perdeu, gera
+  -- outro — o que custa uma reconfiguração lá, não uma fuga de produto aqui.
+  webhook_path_token_sha256 text not null,
 
   -- O carimbo humano do que a API não responde (ver cabeçalho).
   pix_conferido_em timestamptz,
@@ -126,7 +138,7 @@ create table if not exists public.payment_provider_credentials (
 );
 
 comment on table public.payment_provider_credentials is
-  'Conta de gateway de pagamento de CADA organização (migration 0683). Não confundir com cobranca_* (0583), que é a assinatura DA INSTALAÇÃO. O provedor não usa chave de API: o handle é público e o único segredo é o webhook_path_token, que é nosso. Tabela-base fechada a authenticated — a tela lê por payment_provider_credentials_safe.';
+  'Conta de gateway de pagamento de CADA organização (migration 0683). Não confundir com cobranca_* (0583), que é a assinatura DA INSTALAÇÃO. O provedor não usa chave de API: o handle é público e o único segredo é o token do webhook, guardado como SHA-256. authenticated lê só as colunas não-secretas, por grant de coluna; a tela usa payment_provider_credentials_safe.';
 
 comment on column public.payment_provider_credentials.pix_conferido_em is
   'Quando alguém confirmou À MÃO que a chave PIX está cadastrada na conta do provedor. Existe porque isso não é verificável pela API: sem a chave, o link nasce 200, o PIX aparece, e só falha na tela do cliente.';
@@ -139,6 +151,15 @@ alter table public.payment_provider_credentials
 
 -- O carimbo e quem carimbou andam juntos: um sem o outro é registro que não
 -- responde "quem disse que estava conferido?".
+-- O hash tem forma fixa. Sem isto, um INSERT com o token EM CLARO na coluna
+-- passaria calado — e o segredo que esta migration tirou do banco voltaria por
+-- descuido de quem escreve a tela.
+alter table public.payment_provider_credentials
+  drop constraint if exists payment_provider_credentials_token_e_hash;
+alter table public.payment_provider_credentials
+  add constraint payment_provider_credentials_token_e_hash
+  check (webhook_path_token_sha256 ~ '^[0-9a-f]{64}$');
+
 alter table public.payment_provider_credentials
   drop constraint if exists payment_provider_credentials_conferencia_coerente;
 alter table public.payment_provider_credentials
@@ -154,7 +175,7 @@ create unique index if not exists payment_provider_credentials_ativa
 -- O token do caminho é a chave de roteamento do webhook: tem de ser único na
 -- instalação inteira, não só dentro da organização.
 create unique index if not exists payment_provider_credentials_path_token
-  on public.payment_provider_credentials (webhook_path_token);
+  on public.payment_provider_credentials (webhook_path_token_sha256);
 
 drop trigger if exists trg_payment_provider_credentials_touch
   on public.payment_provider_credentials;
@@ -180,15 +201,32 @@ create or replace view public.payment_provider_credentials_safe
     from public.payment_provider_credentials;
 
 comment on view public.payment_provider_credentials_safe is
-  'payment_provider_credentials sem o webhook_path_token (migration 0683). É por aqui que a tela lê. O handle aparece: ele é público.';
+  'payment_provider_credentials sem o hash do token do webhook (migration 0683). É por aqui que a tela lê. O handle aparece: ele é público.';
 
 alter table public.payment_provider_credentials enable row level security;
 revoke all on public.payment_provider_credentials from anon, authenticated;
 grant select, insert, update, delete
   on public.payment_provider_credentials to service_role;
 
--- A view herda o fechamento da base, mas o grant dela é explícito: sem isto a
--- tela não lê nem o handle.
+-- ⚠️ `security_invoker` + base revogada de `authenticated` = view INÚTIL.
+--
+-- A view roda com o privilégio de QUEM CONSULTA, então o grant na view não
+-- substitui o privilégio na tabela de baixo: sem ele, quem administra abre a
+-- tela e leva `permission denied` na própria view "segura". As duas views
+-- `_safe` que já existiam na casa (ai_provider_credentials, external_db_
+-- connections) não revogam a base — este arquivo foi o primeiro a juntar as
+-- duas posturas, e elas não se encaixam.
+--
+-- A saída do Postgres para "precisa ler, mas não TUDO" é grant por COLUNA. O
+-- hash do token fica de fora da lista, então ele não é alcançável nem pela
+-- base, nem pela view, nem por um `select *` à mão pela REST. E a RLS continua
+-- valendo, que é o motivo de a view ser invoker.
+grant select (
+    id, organization_id, provider, label, handle,
+    pix_conferido_em, pix_conferido_por,
+    is_active, created_by, created_at, updated_at
+  ) on public.payment_provider_credentials to authenticated;
+
 revoke all on public.payment_provider_credentials_safe from anon;
 grant select on public.payment_provider_credentials_safe to authenticated, service_role;
 
@@ -295,9 +333,17 @@ alter table public.payment_charges
 alter table public.payment_charges
   add constraint payment_charges_datas_coerentes
   check (
-    (status = 'paid')     = (paid_at     is not null) and
-    (status = 'refunded') = (refunded_at is not null) and
-    (status = 'disputed') = (disputed_at is not null)
+    -- ⚠️ A versão anterior exigia `(status='paid') = (paid_at is not null)`, e
+    -- isso OBRIGAVA A APAGAR `paid_at` para estornar: ao virar `refunded`, o
+    -- lado esquerdo fica falso e o direito verdadeiro. Ou se destruía a data do
+    -- pagamento — dado financeiro — ou o estorno era recusado pelo banco.
+    --
+    -- A regra certa não é sobre o estado ATUAL, é sobre o que aconteceu:
+    -- estornar e contestar pressupõem ter recebido, então os três carregam
+    -- `paid_at`. O que é exclusivo de cada estado continua sendo a data dele.
+    (status in ('paid', 'refunded', 'disputed')) = (paid_at     is not null) and
+    (status = 'refunded')                        = (refunded_at is not null) and
+    (status = 'disputed')                        = (disputed_at is not null)
   );
 
 -- A TRAVA. Marcar pago sem ter conferido o recibo é o caminho pelo qual um
@@ -308,7 +354,18 @@ alter table public.payment_charges
   drop constraint if exists payment_charges_conferida_antes_de_paga;
 alter table public.payment_charges
   add constraint payment_charges_conferida_antes_de_paga
-  check (status <> 'paid' or conferido_pelo_recibo_em is not null);
+  check (
+    status not in ('paid', 'refunded', 'disputed')
+    or conferido_pelo_recibo_em is not null
+  );
+
+-- O RECIBO SÓ CONFIRMA UMA COBRANÇA. Sem isto, o mesmo `transaction_nsu` serve
+-- para carimbar várias cobranças: quem tivesse o token do caminho mandaria o
+-- mesmo recibo (um recibo legítimo qualquer, do valor certo) para liberar uma
+-- cobrança atrás da outra. Parcial porque o nsu só chega com o pagamento.
+create unique index if not exists payment_charges_transacao_unica
+  on public.payment_charges (organization_id, transaction_nsu)
+  where transaction_nsu is not null;
 
 -- A IDEMPOTÊNCIA da cobrança: o gateway reentrega, e duas linhas para a mesma
 -- cobrança remota virariam duas vendas. Parcial porque `external_charge_id` é

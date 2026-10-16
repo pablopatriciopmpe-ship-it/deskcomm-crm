@@ -61,8 +61,17 @@ export const KIND_DO_AVISO = "conferencia_do_recibo_quebrada" as const;
 /** Quantas organizações a rodada sonda. O defeito é global; isto é amostra. */
 export const TETO_DE_ORGS = 5;
 
-/** De quantas cobranças recentes a amostra é tirada antes de deduplicar por org. */
-const COBRANCAS_LIDAS = 50;
+/**
+ * De quantas cobranças recentes a amostra é tirada antes de deduplicar por org.
+ *
+ * ⚠️ Era 50, e 50 FAMINTAVA. A leitura é global e ordenada por data: uma
+ * organização de alto volume ocupa as 50 linhas mais recentes todo dia, e as
+ * demais nunca entram na amostra. Quando o parser quebrasse para uma delas, a
+ * venda ficaria sem entrega e nenhum aviso seria aberto — exatamente o silêncio
+ * que esta rota existe para romper. A janela larga + o rodízio abaixo é o
+ * conserto.
+ */
+const COBRANCAS_LIDAS = 500;
 
 export interface ResultadoDaSonda {
   sondadas: number;
@@ -76,6 +85,15 @@ interface CobrancaSondavel {
   organization_id: string;
   transaction_nsu: string | null;
   amount_cents: number;
+  /** O handle da conta que recebeu — é o que amarra o recibo ao nosso vendedor. */
+  payment_provider_credentials: { handle: string } | { handle: string }[] | null;
+}
+
+/** O PostgREST devolve objeto ou array conforme a cardinalidade que ele infere. */
+function handleDaCobranca(c: CobrancaSondavel): string | null {
+  const v = c.payment_provider_credentials;
+  if (!v) return null;
+  return (Array.isArray(v) ? v[0]?.handle : v.handle) ?? null;
 }
 
 export async function sondarRecibos(admin: SupabaseClient, requestId: string): Promise<ResultadoDaSonda> {
@@ -83,7 +101,7 @@ export async function sondarRecibos(admin: SupabaseClient, requestId: string): P
 
   const { data, error } = await admin
     .from("payment_charges")
-    .select("id, organization_id, transaction_nsu, amount_cents")
+    .select("id, organization_id, transaction_nsu, amount_cents, payment_provider_credentials(handle)")
     .eq("status", "paid")
     .not("conferido_pelo_recibo_em", "is", null)
     .not("transaction_nsu", "is", null)
@@ -107,21 +125,41 @@ export async function sondarRecibos(admin: SupabaseClient, requestId: string): P
   for (const c of (data ?? []) as CobrancaSondavel[]) {
     if (paradas.has(c.organization_id)) continue;
     if (!porOrg.has(c.organization_id)) porOrg.set(c.organization_id, c);
-    if (porOrg.size >= TETO_DE_ORGS) break;
   }
 
   // Instalação que ainda não vendeu não tem o que sondar — e não é defeito.
   if (porOrg.size === 0) return vazio;
 
-  const r: ResultadoDaSonda = { ...vazio, sondadas: porOrg.size };
+  // RODÍZIO, para o teto não virar fome. Sem isto as mesmas N primeiras
+  // organizações seriam sondadas para sempre e as demais, nunca. A ordem é
+  // estável (id) e o começo anda com o dia, então toda organização entra na
+  // amostra dentro de poucos dias, sem precisar de coluna nova para lembrar
+  // quem foi sondado.
+  const todas = [...porOrg.values()].sort((a, b) => a.organization_id.localeCompare(b.organization_id));
+  const diaDoAno = Math.floor(Date.now() / 86_400_000);
+  const inicio = todas.length === 0 ? 0 : (diaDoAno * TETO_DE_ORGS) % todas.length;
+  const escolhidas = Array.from({ length: Math.min(TETO_DE_ORGS, todas.length) }, (_, i) =>
+    todas[(inicio + i) % todas.length]!,
+  );
 
-  for (const cobranca of porOrg.values()) {
+  const r: ResultadoDaSonda = { ...vazio, sondadas: escolhidas.length };
+
+  for (const cobranca of escolhidas) {
+    const handle = handleDaCobranca(cobranca);
     let motivo: string | null = null;
     try {
-      await conferirPeloRecibo({
-        transactionNsu: cobranca.transaction_nsu!,
-        amountCentsEsperado: cobranca.amount_cents,
-      });
+      if (!handle) {
+        // Sem o handle não dá para amarrar o recibo ao nosso vendedor, e
+        // conferir sem essa amarra é o furo que a revisão apontou. Recusar é a
+        // saída segura, e o aviso diz o que falta.
+        motivo = "conta_sem_handle";
+      } else {
+        await conferirPeloRecibo({
+          transactionNsu: cobranca.transaction_nsu!,
+          amountCentsEsperado: cobranca.amount_cents,
+          handle,
+        });
+      }
     } catch (e) {
       motivo = e instanceof ErroDaInfinitePay ? e.codigo : "erro_inesperado";
     }

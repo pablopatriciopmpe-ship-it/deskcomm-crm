@@ -179,6 +179,16 @@ export interface ConferenciaPedida {
   transactionNsu: string;
   /** O valor que NÓS cobramos — lido do nosso banco, nunca do aviso. */
   amountCentsEsperado: number;
+  /**
+   * A InfiniteTag da organização, lida do NOSSO banco. É o que amarra o recibo
+   * ao vendedor certo.
+   *
+   * Sem ela a conferência provava apenas "existe um pagamento com este nsu, de
+   * valor igual" — e isso é verdade para QUALQUER recibo legítimo da
+   * InfinitePay, de qualquer vendedor, no mesmo valor. Quem tivesse o token do
+   * caminho mandaria o nsu de uma compra alheia e levaria o produto.
+   */
+  handle: string;
 }
 
 /** O endereço do recibo é DERIVADO, nunca o que o aviso mandou (anti-SSRF). */
@@ -210,6 +220,26 @@ export function reciboMostraValor(html: string, amountCents: number): boolean {
 }
 
 /**
+ * O recibo nomeia o vendedor? Compara sem diferenciar maiúscula e acentuação de
+ * `$`, porque o handle aparece ora como `$loja`, ora como `loja`.
+ *
+ * ⚠️ ASSIM COMO `reciboMostraValor`, esta leitura NÃO FOI CONFERIDA contra um
+ * recibo real — e esta é a mais arriscada das duas, porque ela é a que pode
+ * recusar venda legítima. Se a página não trouxer o handle em lugar nenhum,
+ * TODA conferência falha e NENHUMA venda é confirmada.
+ *
+ * Isso é ruim, e é o lado certo para errar: o produto não sai sem pagamento, e
+ * o defeito aparece em menos de 24 h pelo aviso do cron da sonda, em vez de
+ * sair produto de graça em silêncio. Mesmo assim, conferir contra um recibo de
+ * verdade é pré-requisito de colocar isto para vender.
+ */
+export function reciboMencionaOHandle(html: string, handle: string): boolean {
+  const limpo = handle.trim().replace(/^\$/, "");
+  if (!limpo) return false;
+  return html.toLowerCase().includes(limpo.toLowerCase());
+}
+
+/**
  * Busca o recibo público e exige que ele confirme o pagamento. Levanta quando
  * NÃO der para confirmar — e levantar é o caminho seguro: sem esta função
  * devolver sem erro, o banco recusa marcar `paid`.
@@ -230,6 +260,13 @@ export async function conferirPeloRecibo(pedido: ConferenciaPedida): Promise<voi
   // vendedor serviria para confirmar qualquer cobrança.
   if (!html.includes(pedido.transactionNsu)) {
     throw new ErroDaInfinitePay(200, "recibo_de_outra_transacao");
+  }
+
+  // ...e de NOSSO vendedor. Esta é a amarra que faltava: sem ela, o recibo de
+  // uma compra feita em outra loja da InfinitePay, no mesmo valor, confirmava
+  // uma cobrança nossa.
+  if (!reciboMencionaOHandle(html, pedido.handle)) {
+    throw new ErroDaInfinitePay(200, "recibo_de_outro_vendedor");
   }
 
   if (!reciboMostraValor(html, pedido.amountCentsEsperado)) {

@@ -7,6 +7,7 @@ import {
   enderecoDoRecibo,
   ErroDaInfinitePay,
   INFINITEPAY_RECIBO_HOST,
+  reciboMencionaOHandle,
   reciboMostraValor,
 } from "./infinitepay";
 
@@ -161,24 +162,25 @@ describe("o valor dentro do HTML do recibo", () => {
 
 describe("a conferência pelo recibo", () => {
   const nsu = "d8846e38-8d8a-4c8f-a0ad-6922b3a5a346";
+  const HANDLE = "minhaloja";
 
   it("passa quando o recibo traz a MESMA transação e o MESMO valor", async () => {
     vi.stubGlobal(
       "fetch",
-      respondeCom(200, null, { texto: `<html>Transação ${nsu} — R$ 1,00 pago</html>` }),
+      respondeCom(200, null, { texto: `<html>$minhaloja — Transação ${nsu} — R$ 1,00 pago</html>` }),
     );
     await expect(
-      conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 100 }),
+      conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 100, handle: HANDLE }),
     ).resolves.toBeUndefined();
   });
 
   it("recusa recibo de OUTRA transação", async () => {
     vi.stubGlobal(
       "fetch",
-      respondeCom(200, null, { texto: "<html>Transação outra-coisa — R$ 1,00</html>" }),
+      respondeCom(200, null, { texto: "<html>$minhaloja — Transação outra-coisa — R$ 1,00</html>" }),
     );
     await expect(
-      conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 100 }),
+      conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 100, handle: HANDLE }),
     ).rejects.toThrow("infinitepay:recibo_de_outra_transacao");
   });
 
@@ -187,25 +189,52 @@ describe("a conferência pelo recibo", () => {
     // confirmar R$ 1 para uma cobrança de R$ 500.
     vi.stubGlobal(
       "fetch",
-      respondeCom(200, null, { texto: `<html>Transação ${nsu} — R$ 1,00</html>` }),
+      respondeCom(200, null, { texto: `<html>$minhaloja — Transação ${nsu} — R$ 1,00</html>` }),
     );
     await expect(
-      conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 50000 }),
+      conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 50000, handle: HANDLE }),
     ).rejects.toThrow("infinitepay:recibo_com_valor_diferente");
   });
 
   it("recusa quando o recibo não abre", async () => {
     vi.stubGlobal("fetch", respondeCom(404, null, { texto: "sumiu" }));
     await expect(
-      conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 100 }),
+      conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 100, handle: HANDLE }),
     ).rejects.toThrow("infinitepay:recibo_inacessivel");
   });
 
   it("não segue redirecionamento — senão o pino do host não vale nada", async () => {
-    const espiao = respondeCom(200, null, { texto: `<html>${nsu} R$ 1,00</html>` });
+    const espiao = respondeCom(200, null, { texto: `<html>$minhaloja ${nsu} R$ 1,00</html>` });
     vi.stubGlobal("fetch", espiao);
-    await conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 100 });
+    await conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 100, handle: HANDLE });
 
     expect((espiao.mock.calls[0]![1] as RequestInit).redirect).toBe("error");
+  });
+});
+
+describe("o recibo tem de ser do NOSSO vendedor", () => {
+  const nsu = "d8846e38-8d8a-4c8f-a0ad-6922b3a5a346";
+
+  it("recusa recibo legítimo de OUTRA loja, no mesmo valor", async () => {
+    // Era o furo: a conferência provava "existe pagamento com este nsu, deste
+    // valor" — verdade para qualquer recibo da InfinitePay, de qualquer
+    // vendedor. Quem tivesse o token do caminho usava a compra de um estranho.
+    vi.stubGlobal(
+      "fetch",
+      respondeCom(200, null, { texto: `<html>$outraloja — ${nsu} — R$ 1,00</html>` }),
+    );
+    await expect(
+      conferirPeloRecibo({ transactionNsu: nsu, amountCentsEsperado: 100, handle: "minhaloja" }),
+    ).rejects.toThrow("infinitepay:recibo_de_outro_vendedor");
+  });
+
+  it("reconhece o handle com e sem o cifrão, e sem caixa", () => {
+    expect(reciboMencionaOHandle("<p>Pago para $MinhaLoja</p>", "minhaloja")).toBe(true);
+    expect(reciboMencionaOHandle("<p>Pago para minhaloja</p>", "$minhaloja")).toBe(true);
+    expect(reciboMencionaOHandle("<p>Pago para outraloja</p>", "minhaloja")).toBe(false);
+  });
+
+  it("handle vazio nunca passa — não vale como curinga", () => {
+    expect(reciboMencionaOHandle("<p>qualquer coisa</p>", "   ")).toBe(false);
   });
 });

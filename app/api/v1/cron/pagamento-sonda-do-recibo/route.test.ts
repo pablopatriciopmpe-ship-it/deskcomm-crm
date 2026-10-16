@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as InfinitePay from "@/lib/pagamentos/provedores/infinitepay";
 import { bancoFalso, operacao, type BancoFalso, type Cadeia, type Resposta } from "@/tests/helpers/banco-falso-da-cobranca";
 
 /**
@@ -29,7 +30,7 @@ vi.mock("@/lib/audit", () => ({
   },
 }));
 vi.mock("@/lib/pagamentos/provedores/infinitepay", async (original) => {
-  const real = await original<typeof import("@/lib/pagamentos/provedores/infinitepay")>();
+  const real = await original<typeof InfinitePay>();
   return {
     ...real,
     conferirPeloRecibo: async () => {
@@ -45,7 +46,13 @@ const ORG_A = "aaaaaaaa-0000-4000-8000-000000000001";
 const ORG_B = "bbbbbbbb-0000-4000-8000-000000000002";
 
 interface Mundo {
-  cobrancas: Array<{ id: string; organization_id: string; transaction_nsu: string; amount_cents: number }>;
+  cobrancas: Array<{
+    id: string;
+    organization_id: string;
+    transaction_nsu: string;
+    amount_cents: number;
+    payment_provider_credentials: { handle: string } | null;
+  }>;
   resolvidos: Array<{ id: string }>;
   orgsParadas: Array<{ id: string }>;
 }
@@ -74,6 +81,7 @@ const cobranca = (org: string, i = 1) => ({
   organization_id: org,
   transaction_nsu: `nsu-${org}-${i}`,
   amount_cents: 12990,
+  payment_provider_credentials: { handle: `loja-${org}` },
 });
 
 beforeEach(() => {
@@ -191,5 +199,30 @@ describe("organização parada", () => {
     m.orgsParadas = [{ id: ORG_A }];
     const r = await rodar();
     await expect(r.json()).resolves.toMatchObject({ data: { sondadas: TETO_DE_ORGS } });
+  });
+});
+
+describe("a amostra não pode famintar organização", () => {
+  it("sonda organizações DIFERENTES, mesmo com uma delas dominando as cobranças recentes", async () => {
+    // Era o defeito: a leitura é global e ordenada por data. Uma organização de
+    // alto volume ocupava a janela inteira e as demais nunca eram sondadas —
+    // e, quando o parser quebrasse para elas, ninguém saberia.
+    m.cobrancas = [
+      ...Array.from({ length: 40 }, (_, i) => cobranca(ORG_A, i + 1)),
+      cobranca(ORG_B, 1),
+    ];
+    const r = await rodar();
+    await expect(r.json()).resolves.toMatchObject({ data: { sondadas: 2 } });
+  });
+});
+
+describe("a conta sem handle", () => {
+  it("abre aviso em vez de conferir sem amarra ao vendedor", async () => {
+    // Sem o handle não dá para provar que o recibo é da nossa loja. Conferir
+    // assim mesmo era o furo apontado na revisão; recusar é a saída segura.
+    m.cobrancas = [{ ...cobranca(ORG_A), payment_provider_credentials: null }];
+    const r = await rodar();
+    await expect(r.json()).resolves.toMatchObject({ data: { falharam: 1, avisosAbertos: 1 } });
+    expect(String((h.avisosAbertos[0] as Record<string, unknown>).body)).toContain("conta_sem_handle");
   });
 });
