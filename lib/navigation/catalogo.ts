@@ -969,6 +969,25 @@ export const NAV_CATALOG = [
     minRole: "admin",
   },
   {
+    // Vizinha de Conversões e de Billing, e no mesmo grupo, pelo mesmo
+    // critério: aqui se decide PARA ONDE VAI O DINHEIRO das vendas. `admin`
+    // pela mesma razão — um `manager` escolhendo destino de receita ficaria
+    // acima de quem paga a conta.
+    //
+    // Separada de "Plano e cobrança" de propósito, e a confusão é previsível:
+    // lá a INSTALAÇÃO cobra esta empresa; aqui esta empresa cobra os clientes
+    // DELA. Credenciais diferentes, contas bancárias diferentes, consequências
+    // opostas quando falham.
+    href: "/app/settings/pagamentos",
+    label: "Receber pagamentos",
+    description:
+      "A conta que recebe o PIX das vendas, para o assistente cobrar e entregar o produto sozinho.",
+    icon: "Receipt",
+    group: "organizacao",
+    section: "Sua empresa",
+    minRole: "admin",
+  },
+  {
     // Mora em Organização e não em Canais de propósito: o que se configura aqui
     // é a CONTA DE ANÚNCIOS da empresa — dinheiro e identidade comercial, ao lado
     // de billing e API tokens. Canais é por onde se FALA com o cliente, e os dois

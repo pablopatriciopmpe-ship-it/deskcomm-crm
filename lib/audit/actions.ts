@@ -1159,6 +1159,14 @@ export const AUDIT_ACTIONS = [
   // a conferência do recibo do provedor parou (ou voltou) de funcionar. Rodada
   // sem novidade não vira linha — mesmo padrão de "message.recover_stuck_run".
   "pagamento.sonda_do_recibo_run",
+  // A empresa ligou (ou trocou) a conta que RECEBE o dinheiro das vendas.
+  // Trocar o handle muda o destino da receita, e o audit é a única trilha de
+  // quem mudou — a escrita é do servidor, pela tela de Configurações.
+  "pagamento.conta_configurada",
+  // Alguém da equipe atestou que a chave PIX está cadastrada no provedor. Não
+  // é verificável pela API, então o carimbo humano é a única prova — e a
+  // pergunta que a auditoria faz depois é "quem disse que estava conferido?".
+  "pagamento.chave_pix_conferida",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */
