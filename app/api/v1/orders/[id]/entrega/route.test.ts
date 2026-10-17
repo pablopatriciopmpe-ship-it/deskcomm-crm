@@ -67,6 +67,10 @@ interface Mundo {
   pedido: { id: string; status: string | null; contact_id: string | null } | null;
   arquivos: Array<{ id: string }>;
   conversa: { id: string } | null;
+  /** A entrega VIVA do pedido, do jeito que o banco a devolve. */
+  viva: { id: string; token_sha256: string | null } | null;
+  /** O insert da entrega nova falha (disco, rede, corrida). */
+  erroDoInsert: { code?: string; message: string } | null;
 }
 let m: Mundo;
 
@@ -76,10 +80,16 @@ function responder(c: Cadeia): Resposta {
   if (c.tabela === "catalog_product_files") return { data: m.arquivos };
   if (c.tabela === "conversations") return { data: m.conversa };
   if (c.tabela === "order_deliveries") {
-    // Depois da revogação, `prepararEntrega` não acha entrega viva — é o que
-    // deixa a criação da nova acontecer.
-    if (operacao(c) === "select") return { data: null };
-    return { data: null };
+    if (operacao(c) === "insert") return m.erroDoInsert ? { error: m.erroDoInsert } : { data: null };
+    if (operacao(c) === "update") return { data: null };
+    // A PRIMEIRA leitura é a do `reenviarEntrega`, que procura a viva para
+    // decidir se o acesso foi revogado de propósito. A segunda vem de
+    // `prepararEntrega`, DEPOIS da revogação — e aí não pode achar nada, senão
+    // ele devolveria `ja_entregue`.
+    const jaLeu = h.banco.cadeias.filter(
+      (x) => x.tabela === "order_deliveries" && operacao(x) === "select",
+    ).length;
+    return { data: jaLeu > 1 ? null : m.viva };
   }
   return {};
 }
@@ -103,6 +113,8 @@ beforeEach(() => {
     pedido: { id: PEDIDO, status: "paid", contact_id: CONTATO },
     arquivos: [{ id: "arq-1" }],
     conversa: { id: "conversa-1" },
+    viva: { id: "entrega-1", token_sha256: "a".repeat(64) },
+    erroDoInsert: null,
   };
   h.banco = bancoFalso(responder);
 });
@@ -182,6 +194,44 @@ describe("o endereço novo", () => {
     const corpo = (await r.json()) as { data: { avisado: boolean; url: string } };
     expect(corpo.data.avisado).toBe(false);
     expect(corpo.data.url).toContain("/entrega/");
+  });
+});
+
+describe("o que o reenvio NÃO desfaz", () => {
+  it("RECUSA quando o acesso foi revogado de propósito (LGPD ou reembolso)", async () => {
+    // A redação de LGPD e a revogação por reembolso derrubam o acesso pondo
+    // `token_sha256` em NULO, e NÃO mexem em `revogada_em` — a linha segue
+    // "viva" para o índice parcial. Um reenvio ingênuo a revogaria e criaria um
+    // token novo, DEVOLVENDO o acesso que o apagamento tinha destruído.
+    m.viva = { id: "entrega-1", token_sha256: null };
+    const r = await reenviar();
+    expect(r.status).toBe(409);
+    // E não chega a mexer em nada.
+    expect(cadeiasDe("order_deliveries", "update")).toHaveLength(0);
+    expect(cadeiasDe("order_deliveries", "insert")).toHaveLength(0);
+    expect(h.auditorias).toHaveLength(0);
+  });
+
+  it("falha ao criar a nova DEVOLVE a revogação — senão o comprador fica sem nada", async () => {
+    // Era o pior estado possível: o endereço que ele tinha deixava de abrir e
+    // nenhum novo nascia. O hash nunca foi tocado, então desfazer a revogação
+    // faz o endereço antigo voltar a funcionar.
+    m.erroDoInsert = { message: "disco cheio" };
+    const r = await reenviar();
+    expect(r.status).toBe(500);
+
+    const updates = cadeiasDe("order_deliveries", "update");
+    expect(updates).toHaveLength(2);
+    const volta = updates[1]!.passos[0]!.args[0] as Record<string, unknown>;
+    expect(volta.revogada_em).toBeNull();
+    expect(volta.motivo_revogacao).toBeNull();
+  });
+
+  it("pedido que nunca teve entrega não tenta revogar nada", async () => {
+    m.viva = null;
+    const r = await reenviar();
+    expect(r.status).toBe(200);
+    expect(cadeiasDe("order_deliveries", "update")).toHaveLength(0);
   });
 });
 

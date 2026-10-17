@@ -145,26 +145,69 @@ export async function reenviarEntrega(
   admin: SupabaseClient,
   organizationId: string,
   orderId: string,
-): Promise<EntregaCriada | { motivo: "sem_arquivo" | "falhou" }> {
+): Promise<EntregaCriada | { motivo: "sem_arquivo" | "acesso_revogado" | "reenvio_concorrente" | "falhou" }> {
+  // ⚠️ PRIMEIRO: o acesso deste pedido foi DESTRUÍDO de propósito?
+  //
+  // A redação de LGPD e a revogação por reembolso derrubam o acesso pondo
+  // `token_sha256` em NULO (é o que a 0690 registra em `modulo_secoes_lgpd`), e
+  // elas NÃO mexem em `revogada_em`. Então a linha segue "viva" para o índice
+  // parcial, e um reenvio ingênuo a revogaria e criaria um token novo —
+  // devolvendo o acesso que um apagamento de LGPD tinha acabado de destruir.
+  // Reenvio não desfaz apagamento.
+  const { data: viva, error: erroDaLeitura } = await admin
+    .from("order_deliveries")
+    .select("id, token_sha256")
+    .eq("organization_id", organizationId)
+    .eq("order_id", orderId)
+    .is("revogada_em", null)
+    .maybeSingle();
+
+  if (erroDaLeitura) return { motivo: "falhou" };
+
+  const atual = viva as { id: string; token_sha256: string | null } | null;
+  if (atual && atual.token_sha256 === null) return { motivo: "acesso_revogado" };
+
   // Revoga a viva ANTES de criar a nova: o índice único parcial
   // `order_deliveries_uma_viva_por_pedido` recusaria a segunda enquanto a
   // primeira estivesse de pé — e é essa trava que garante que nunca existam
   // dois endereços válidos para o mesmo pedido.
-  const { error: erroDaRevogacao } = await admin
-    .from("order_deliveries")
-    .update({ revogada_em: new Date().toISOString(), motivo_revogacao: "reenviada" })
-    .eq("organization_id", organizationId)
-    .eq("order_id", orderId)
-    .is("revogada_em", null);
+  if (atual) {
+    const { error: erroDaRevogacao } = await admin
+      .from("order_deliveries")
+      .update({ revogada_em: new Date().toISOString(), motivo_revogacao: "reenviada" })
+      .eq("id", atual.id)
+      .eq("organization_id", organizationId)
+      .is("revogada_em", null);
 
-  if (erroDaRevogacao) return { motivo: "falhou" };
+    if (erroDaRevogacao) return { motivo: "falhou" };
+  }
 
   const nova = await prepararEntrega(admin, organizationId, orderId);
-  // `ja_entregue` aqui seria defeito: acabamos de revogar a viva, então
-  // `prepararEntrega` não pode ter encontrado nenhuma. Se encontrou, alguém
-  // criou uma no meio — tratar como falha é a saída honesta.
+
   if ("motivo" in nova) {
-    return { motivo: nova.motivo === "sem_arquivo" ? "sem_arquivo" : "falhou" };
+    // ⚠️ DESFAZ A REVOGAÇÃO. Sem isto, falhar aqui deixava o pior estado
+    // possível: o comprador perdia o endereço que tinha e nenhum novo nascia.
+    // O hash nunca foi tocado, então devolver `revogada_em` a nulo faz o
+    // endereço antigo voltar a abrir — é compensação de verdade, não remendo.
+    if (atual) {
+      await admin
+        .from("order_deliveries")
+        .update({ revogada_em: null, motivo_revogacao: null })
+        .eq("id", atual.id)
+        .eq("organization_id", organizationId);
+    }
+    if (nova.motivo === "sem_arquivo") return { motivo: "sem_arquivo" };
+    // `ja_entregue` depois de revogar só acontece se OUTRO reenvio criou uma
+    // entrega no meio do caminho. Quem chama manda recarregar em vez de
+    // devolver um endereço que já pode estar morto.
+    if (nova.motivo === "ja_entregue") return { motivo: "reenvio_concorrente" };
+    return { motivo: "falhou" };
   }
+
+  // ponytail: dois reenvios SIMULTÂNEOS no mesmo pedido ainda podem fazer o
+  // primeiro devolver um endereço que o segundo já revogou — o índice parcial
+  // impede dois vivos, não serializa a operação inteira. O custo é um link que
+  // não abre e um clique a mais; serializar pediria trava no banco. Se virar
+  // queixa, uma RPC com `select ... for update` no pedido resolve.
   return nova;
 }

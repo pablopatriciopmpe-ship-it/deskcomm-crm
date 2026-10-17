@@ -33,9 +33,28 @@ export const TAMANHO_MAXIMO_DO_ARQUIVO = 524_288_000;
 export const MAXIMO_DE_ARQUIVOS = 10;
 
 /**
- * Os tipos que o bucket aceita (`allowed_mime_types` da 0690), nesta ordem.
- * Mudar esta lista sem mudar a migration faz a rota prometer o que o Storage
- * recusa.
+ * Os tipos que o UPLOAD aceita.
+ *
+ * ⚠️ É um SUBCONJUNTO do `allowed_mime_types` do bucket (0690), e isso é de
+ * propósito: a lista de lá tem `text/markdown` e `text/plain`, que esta NÃO
+ * tem. Mais estreito é seguro — a rota promete menos do que o Storage aceita,
+ * e o modo de falha que `fotos.ts` adverte (a rota aceitar o que o Storage
+ * recusa) não acontece nesse sentido. O contrário quebraria.
+ *
+ * ── Por que texto saiu ───────────────────────────────────────────────────────
+ *
+ * Texto NÃO TEM ASSINATURA: nenhum farejador distingue um `.txt` de qualquer
+ * outra coisa. A primeira versão disto aceitava texto com duas travas (UTF-8
+ * válido + heurística de marcação), e a heurística era furada de um jeito óbvio:
+ * ela listava `script|svg|html|iframe|object|embed` e olhava 1.024 bytes, então
+ * `<img src=x onerror=…>` passava, e 1.024 espaços antes de `<script>` também.
+ *
+ * Fechar isso de verdade pediria varrer o arquivo inteiro e recusar qualquer
+ * `<tag`, o que reprovaria markdown legítimo (code sample, `<br>`). Entre uma
+ * heurística que não protege e uma regra que atrapalha, a saída é não aceitar o
+ * tipo: quem entrega checklist exporta PDF, que é o formato normal de
+ * infoproduto. Se algum dia alguém precisar de texto, entra com o farejador
+ * certo, não com esta lista alargada na pressa.
  */
 export const TIPOS_ACEITOS = [
   "application/pdf",
@@ -45,8 +64,6 @@ export const TIPOS_ACEITOS = [
   "audio/mpeg",
   "image/png",
   "image/jpeg",
-  "text/markdown",
-  "text/plain",
 ] as const;
 export type TipoAceito = (typeof TIPOS_ACEITOS)[number];
 
@@ -58,8 +75,6 @@ const EXTENSAO: Record<TipoAceito, string> = {
   "audio/mpeg": "mp3",
   "image/png": "png",
   "image/jpeg": "jpg",
-  "text/markdown": "md",
-  "text/plain": "txt",
 };
 
 export function extensaoDoEntregavel(mime: TipoAceito): string {
@@ -82,14 +97,8 @@ export const BYTES_PARA_FAREJAR = 1024;
  * partir do domínio do Storage. Aceitar o tipo declarado deixaria subir um HTML
  * e servi-lo como HTML naquele domínio.
  *
- * ── O caso do texto, que não tem assinatura ──────────────────────────────────
- *
- * `text/markdown` e `text/plain` não têm bytes mágicos: nenhum farejador os
- * distingue de qualquer outra coisa. Então a decisão é por EXCLUSÃO, e com duas
- * travas: o conteúdo tem de ser UTF-8 válido, e não pode parecer marcação que um
- * navegador executaria. O tipo gravado é `text/plain`/`text/markdown`, que são
- * inertes; a trava de marcação existe para o caso de um Storage (ou um proxy à
- * frente) algum dia farejar o conteúdo por conta própria.
+ * TODO tipo aqui tem assinatura. Texto não tem, e por isso não está na lista —
+ * ver o comentário de `TIPOS_ACEITOS`.
  */
 export function farejarEntregavel(bytes: Uint8Array, extensaoDeclarada: string): TipoAceito | null {
   if (comecaCom(bytes, [0x25, 0x50, 0x44, 0x46])) return "application/pdf"; // %PDF
@@ -107,33 +116,7 @@ export function farejarEntregavel(bytes: Uint8Array, extensaoDeclarada: string):
     return extensaoDeclarada === "epub" ? "application/epub+zip" : "application/zip";
   }
 
-  if (extensaoDeclarada === "md" || extensaoDeclarada === "txt") {
-    if (!ehUtf8Valido(bytes)) return null;
-    if (pareceMarcacaoExecutavel(bytes)) return null;
-    return extensaoDeclarada === "md" ? "text/markdown" : "text/plain";
-  }
-
   return null;
-}
-
-function ehUtf8Valido(bytes: Uint8Array): boolean {
-  try {
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Parece HTML, SVG ou XML? DELIBERADAMENTE FROUXO, como o `pareceSvg` do logo:
- * aqui o erro caro é o falso NEGATIVO, e um texto legítimo que caia nesta rede
- * perde no máximo a chance de ser entregue como `.txt` (pode ir como PDF).
- */
-function pareceMarcacaoExecutavel(bytes: Uint8Array): boolean {
-  let texto = "";
-  for (const b of bytes.subarray(0, BYTES_PARA_FAREJAR)) texto += String.fromCharCode(b);
-  return /<\s*(script|svg|html|iframe|object|embed)[\s>]/i.test(texto) || /<\?xml|<!doctype/i.test(texto);
 }
 
 const FORMA_DO_CAMINHO = new RegExp(
@@ -165,10 +148,31 @@ export function arquivoPertenceAoProduto(caminho: string, orgId: string, produto
  * caractere de controle nem aspas (eles quebram cabeçalho e atributo), e curto.
  * O nome NÃO decide o caminho no bucket — esse é um uuid gerado no servidor.
  */
+/** O nome inteiro, extensão incluída, não passa disto. */
+const TETO_DO_NOME = 120;
+
 export function nomeSeguroDoArquivo(bruto: string, mime: TipoAceito): string {
   const semCaminho = bruto.replace(/\\/g, "/").split("/").pop() ?? "";
   // eslint-disable-next-line no-control-regex -- é exatamente o que se quer tirar
-  const limpo = semCaminho.replace(/[\u0000-\u001f\u007f"'`<>|*?:]/g, "").trim();
-  const curto = limpo.slice(0, 120);
-  return curto.length > 0 ? curto : `arquivo.${extensaoDoEntregavel(mime)}`;
+  let limpo = semCaminho.replace(/[\u0000-\u001f\u007f"'`<>|*?:]/g, "");
+  // Os controles de DIREÇÃO DE TEXTO também saem. Eles não são de controle no
+  // sentido ASCII e passavam pela limpeza acima, mas servem a um truque antigo:
+  // `U+202E` (RLO) inverte o que vem depois, então `lista<RLO>fdp.exe` aparece
+  // na tela do comprador como `listaexe.pdf`. Este nome é mostrado e salvo por
+  // ele.
+  limpo = limpo.replace(/[‎‏‪-‮⁦-⁩]/g, "").trim();
+
+  const certa = extensaoDoEntregavel(mime);
+  if (limpo.length === 0) return `arquivo.${certa}`;
+
+  // A extensão acompanha o que o arquivo É, não o que o nome dizia. Um PDF
+  // chamado `foto.jpg` chegaria ao comprador como `.jpg` e não abriria com dois
+  // cliques — o tipo gravado está certo, o nome é que mentia.
+  if (limpo.toLowerCase().endsWith(`.${certa}`)) return limpo.slice(0, TETO_DO_NOME);
+
+  // O corte reserva espaço para a extensão: cortar em 120 e DEPOIS acrescentar
+  // devolvia 124 caracteres, e o teto existe para o nome caber em cabeçalho e
+  // em nome de arquivo no sistema de quem baixa.
+  const espaco = TETO_DO_NOME - certa.length - 1;
+  return `${limpo.slice(0, espaco)}.${certa}`;
 }

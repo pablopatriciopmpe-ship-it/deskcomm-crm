@@ -94,6 +94,26 @@ export async function POST(
         requestId,
       });
     }
+    // O acesso deste pedido foi DESTRUÍDO de propósito: redação de LGPD ou
+    // revogação por reembolso (as duas põem o hash do token em nulo). Reenvio
+    // não desfaz apagamento — se desfizesse, seria uma porta para devolver
+    // acesso a dado que alguém pediu para apagar.
+    if (nova.motivo === "acesso_revogado") {
+      return fail(
+        "state_conflict",
+        t("O acesso deste pedido foi revogado e o reenvio não o devolve."),
+        409,
+        { requestId },
+      );
+    }
+    if (nova.motivo === "reenvio_concorrente") {
+      return fail(
+        "state_conflict",
+        t("Outro reenvio acabou de acontecer neste pedido. Recarregue para ver o endereço atual."),
+        409,
+        { requestId },
+      );
+    }
     return fail("internal_error", "Erro ao gerar o endereço novo.", 500, { requestId });
   }
 

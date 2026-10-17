@@ -102,6 +102,11 @@ export async function POST(
     });
     return fail("internal_error", "Erro ao ler os arquivos do produto.", 500, { requestId });
   }
+  // ponytail: contar-e-inserir sem trava. Dois uploads no MESMO instante com
+  // nove arquivos leem `9` e os dois entram, deixando onze e repetindo a
+  // `position` — a mesma classe de corrida que a rota de fotos declara. O custo
+  // é cosmético (a ordem é por `position` e depois `id`) e o teto existe para
+  // segurar a página de entrega, não para ser exato. Fechar pediria RPC.
   if ((count ?? 0) >= MAXIMO_DE_ARQUIVOS) {
     return fail("validation_failed", t("Cada produto entrega no máximo 10 arquivos."), 422, {
       requestId,
@@ -133,7 +138,7 @@ export async function POST(
   if (!tipo) {
     return fail(
       "unsupported_media_type",
-      t("Dá para entregar PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD ou TXT."),
+      t("Dá para entregar PDF, EPUB, ZIP, MP4, MP3, PNG ou JPG."),
       415,
       { requestId, details: { content_type_declarado: file.type || null } },
     );
@@ -165,7 +170,19 @@ export async function POST(
 
   if (erroDaLinha || !linha) {
     // O objeto já subiu: sem a linha ele é órfão e come cota para sempre.
-    await admin.storage.from(BUCKET_DOS_ARQUIVOS).remove([caminho]);
+    const { error: erroDaFaxina } = await admin.storage
+      .from(BUCKET_DOS_ARQUIVOS)
+      .remove([caminho]);
+    if (erroDaFaxina) {
+      // A faxina também falhou (Storage fora do ar no mesmo instante). Não há
+      // linha para achar o objeto depois, então o CAMINHO vai para o log: é a
+      // única pista que sobra para alguém apagá-lo à mão.
+      logger.error("[produtos/arquivos] objeto orfao no bucket", {
+        caminho,
+        detalhe: erroDaFaxina.message,
+        requestId,
+      });
+    }
     logger.error("[produtos/arquivos] linha falhou", {
       detalhe: erroDaLinha?.message ?? "sem linha",
       requestId,

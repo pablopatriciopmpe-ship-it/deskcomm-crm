@@ -13,6 +13,10 @@ import { type NextRequest } from "next/server";
 import { audit } from "@/lib/audit";
 import { fail, ok } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import {
+  apagarEntregaveisDoBucket,
+  caminhosDosEntregaveis,
+} from "@/lib/catalogo/arquivos-no-bucket";
 import { apagarDoBucket } from "@/lib/catalogo/fotos-no-bucket";
 import { COLUNAS_DO_PRODUTO, produtoPatchSchema } from "@/lib/schemas/produtos";
 import { createClient } from "@/lib/supabase/server";
@@ -88,6 +92,15 @@ export async function DELETE(
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { id } = await params;
 
+  // ⚠️ LER ANTES DE APAGAR. `catalog_product_files` tem `on delete cascade` para
+  // o produto: depois do DELETE as linhas não existem, e com elas vão os únicos
+  // ponteiros para os objetos no bucket. Sem esta leitura, apagar um produto
+  // deixava o arquivo vendido no `produtos-digitais` para sempre, comendo a cota
+  // de 1 GB que a instalação divide com a mídia do WhatsApp. As fotos não têm
+  // esse problema porque moram numa COLUNA da própria linha, que o DELETE
+  // devolve.
+  const entregaveis = await caminhosDosEntregaveis(authz.org.orgId, id);
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("catalog_products")
@@ -101,6 +114,7 @@ export async function DELETE(
   if (!data) return fail("not_found", t("Produto não encontrado."), 404, { requestId });
   // As fotos saem junto: a linha era a única referência a elas.
   await apagarDoBucket(authz.org.orgId, id, (data as { fotos: string[] | null }).fotos ?? [], requestId);
+  await apagarEntregaveisDoBucket(authz.org.orgId, id, entregaveis, requestId);
 
   await audit({
     organizationId: authz.org.orgId,

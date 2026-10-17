@@ -214,7 +214,7 @@ function ArquivosDoProduto({
         }}
       />
       <p className="mt-2 text-xs text-muted-foreground">
-        {t("PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD ou TXT, até 500 MB. No máximo 10 por produto.")}
+        {t("PDF, EPUB, ZIP, MP4, MP3, PNG ou JPG, até 500 MB. No máximo 10 por produto.")}
       </p>
       {arquivos.length > 0 ? (
         <p className="mt-1 text-xs text-muted-foreground">

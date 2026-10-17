@@ -59,24 +59,19 @@ describe("o tipo sai dos bytes, não do que o navegador declarou", () => {
     expect(farejarEntregavel(exe, "pdf")).toBeNull();
   });
 
-  it("RECUSA HTML renomeado para .txt — ele seria servido do domínio do Storage", () => {
-    expect(farejarEntregavel(texto("<html><script>alert(1)</script>"), "txt")).toBeNull();
-    expect(farejarEntregavel(texto("<svg onload=alert(1)>"), "txt")).toBeNull();
-    expect(farejarEntregavel(texto("<?xml version='1.0'?><x/>"), "md")).toBeNull();
-  });
-
-  it("aceita texto de verdade, e só nas extensões de texto", () => {
-    const lista = texto("# Checklist\n\n- primeiro passo\n- segundo passo\n");
-    expect(farejarEntregavel(lista, "md")).toBe("text/markdown");
-    expect(farejarEntregavel(lista, "txt")).toBe("text/plain");
-    // Sem extensão de texto não há como decidir: texto não tem assinatura.
-    expect(farejarEntregavel(lista, "pdf")).toBeNull();
-  });
-
-  it("RECUSA texto que não é UTF-8 válido", () => {
-    // Bytes de uma sequência UTF-8 truncada: não é texto, e aceitar como
-    // `text/plain` gravaria lixo que o comprador baixa e não abre.
-    expect(farejarEntregavel(new Uint8Array([0xc3, 0x28, 0x41]), "txt")).toBeNull();
+  it("TEXTO não entra, qualquer que seja o conteúdo", () => {
+    // A primeira versão aceitava `.md`/`.txt` com uma heurística de marcação, e
+    // a heurística era furada de um jeito óbvio: `<img src=x onerror=…>` passava
+    // (não estava na lista de tags) e 1.024 espaços antes de `<script>` também
+    // (a janela olhava só o começo). Texto não tem assinatura, então o tipo saiu
+    // da lista em vez de ganhar outra heurística.
+    const lista = texto("# Checklist\n\n- primeiro passo\n");
+    expect(farejarEntregavel(lista, "md")).toBeNull();
+    expect(farejarEntregavel(lista, "txt")).toBeNull();
+    expect(farejarEntregavel(texto("<img src=x onerror=alert(1)>"), "txt")).toBeNull();
+    expect(
+      farejarEntregavel(texto(" ".repeat(1024) + "<script>alert(1)</script>"), "txt"),
+    ).toBeNull();
   });
 
   it("todo tipo aceito tem extensão, e o bucket é o privado da 0690", () => {
@@ -121,7 +116,23 @@ describe("o nome que o comprador vê", () => {
     expect(nomeSeguroDoArquivo("C:\\Users\\eu\\Documentos\\curso.pdf", "application/pdf")).toBe(
       "curso.pdf",
     );
-    expect(nomeSeguroDoArquivo("../../etc/passwd.txt", "text/plain")).toBe("passwd.txt");
+    expect(nomeSeguroDoArquivo("../../etc/passwd.zip", "application/zip")).toBe("passwd.zip");
+  });
+
+  it("tira os controles de DIREÇÃO, que invertem o nome na tela do comprador", () => {
+    // `U+202E` (RLO) faz `lista‮fdp.exe` aparecer como `listaexe.pdf`.
+    const seguro = nomeSeguroDoArquivo("lista‮fdp.exe", "application/pdf");
+    expect(seguro).not.toContain("‮");
+    expect(seguro).toBe("listafdp.exe.pdf");
+  });
+
+  it("a extensão acompanha o que o arquivo É, não o que o nome dizia", () => {
+    // PDF chamado `foto.jpg` chegaria ao comprador como `.jpg` e não abriria
+    // com dois cliques. O tipo gravado está certo; o nome é que mentia.
+    expect(nomeSeguroDoArquivo("foto.jpg", "application/pdf")).toBe("foto.jpg.pdf");
+    // E não duplica quando já está certa, nem se incomoda com caixa alta.
+    expect(nomeSeguroDoArquivo("curso.pdf", "application/pdf")).toBe("curso.pdf");
+    expect(nomeSeguroDoArquivo("CURSO.PDF", "application/pdf")).toBe("CURSO.PDF");
   });
 
   it("tira aspas e caractere de controle, que quebram cabeçalho e atributo", () => {

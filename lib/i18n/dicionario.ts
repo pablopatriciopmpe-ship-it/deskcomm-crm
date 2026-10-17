@@ -16150,6 +16150,8 @@ export const DICIONARIO: Traducoes = {
   "atualizado": { es: "actualizado" },
   "recusado": { es: "rechazado" },
   "Recusado.": { es: "Rechazado." },
+  "O acesso deste pedido foi revogado e o reenvio não o devolve.": { es: "El acceso de este pedido fue revocado y el reenvío no lo devuelve." },
+  "Outro reenvio acabou de acontecer neste pedido. Recarregue para ver o endereço atual.": { es: "Otro reenvío acaba de ocurrir en este pedido. Recarga para ver la dirección actual." },
 
   // ── Reenvio do acesso da entrega ──────────────────────────────────────
   "Acesso novo enviado na conversa.": { es: "Acceso nuevo enviado en la conversación." },
@@ -16167,13 +16169,13 @@ export const DICIONARIO: Traducoes = {
   "Sem arquivo aqui, este produto é vendido e NÃO é entregue: o cliente paga e não recebe nada. Suba o que ele compra.": { es: "Sin archivo aquí, este producto se vende y NO se entrega: el cliente paga y no recibe nada. Sube lo que él compra." },
   "É isto que o cliente recebe depois de pagar, numa página com endereço secreto que vence em 30 dias.": { es: "Esto es lo que el cliente recibe después de pagar, en una página con dirección secreta que vence en 30 días." },
   "Tirar": { es: "Eliminar" },
-  "PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD ou TXT, até 500 MB. No máximo 10 por produto.": { es: "PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD o TXT, hasta 500 MB. Como máximo 10 por producto." },
+  "PDF, EPUB, ZIP, MP4, MP3, PNG ou JPG, até 500 MB. No máximo 10 por produto.": { es: "PDF, EPUB, ZIP, MP4, MP3, PNG o JPG, hasta 500 MB. Como máximo 10 por producto." },
   "Tirar um arquivo tira de TODOS, inclusive de quem já comprou: a página de entrega mostra esta lista como ela está agora.": { es: "Eliminar un archivo lo quita para TODOS, incluso para quien ya compró: la página de entrega muestra esta lista tal como está ahora." },
   "Entrega": { es: "Entrega" },
   "Cada produto entrega no máximo 10 arquivos.": { es: "Cada producto entrega como máximo 10 archivos." },
   "O arquivo precisa ter até 500 MB.": { es: "El archivo debe tener hasta 500 MB." },
   "O arquivo está vazio.": { es: "El archivo está vacío." },
-  "Dá para entregar PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD ou TXT.": { es: "Se puede entregar PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD o TXT." },
+  "Dá para entregar PDF, EPUB, ZIP, MP4, MP3, PNG ou JPG.": { es: "Se puede entregar PDF, EPUB, ZIP, MP4, MP3, PNG o JPG." },
   "Diga qual arquivo tirar.": { es: "Indica qué archivo eliminar." },
   "Arquivo não encontrado.": { es: "Archivo no encontrado." },
 
