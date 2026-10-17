@@ -102,6 +102,17 @@ describe("as recusas que acontecem ANTES de escrever", () => {
     expect(escritas("orders")).toHaveLength(0);
   });
 
+  it("a cobrança guarda o RETRATO de quem recebe, não só o ponteiro", async () => {
+    // A conta é mutável. Sem o retrato, trocar a InfiniteTag com esta venda em
+    // voo faria a conferência comparar o recibo da conta antiga com o handle da
+    // conta nova — nenhuma venda confirmaria.
+    await cobrar();
+    const insercao = escritas("payment_charges")[0]!;
+    const args = insercao.passos[0]!.args[0] as Record<string, unknown>;
+    expect(args.handle_do_recebedor).toBe("minhaloja");
+    expect(args.credential_id).toBe("conta-1");
+  });
+
   it("recusa quando ninguém conferiu o aviso de pagamento", async () => {
     // A PIOR falta das três, e a única que custa dinheiro a QUEM COMPRA: sem o
     // webhook cadastrado no provedor, o link funciona, o cliente paga, o

@@ -86,11 +86,16 @@ interface CobrancaSondavel {
   transaction_nsu: string | null;
   amount_cents: number;
   /** O handle da conta que recebeu — é o que amarra o recibo ao nosso vendedor. */
+  handle_do_recebedor: string | null;
   payment_provider_credentials: { handle: string } | { handle: string }[] | null;
 }
 
 /** O PostgREST devolve objeto ou array conforme a cardinalidade que ele infere. */
 function handleDaCobranca(c: CobrancaSondavel): string | null {
+  // O retrato de quem recebeu vem primeiro: se a organização trocou de conta
+  // depois desta cobrança, o recibo mostra o handle ANTIGO, e comparar com o
+  // atual faria a sonda acusar quebra onde não houve.
+  if (c.handle_do_recebedor) return c.handle_do_recebedor;
   const v = c.payment_provider_credentials;
   if (!v) return null;
   return (Array.isArray(v) ? v[0]?.handle : v.handle) ?? null;
@@ -101,7 +106,9 @@ export async function sondarRecibos(admin: SupabaseClient, requestId: string): P
 
   const { data, error } = await admin
     .from("payment_charges")
-    .select("id, organization_id, transaction_nsu, amount_cents, payment_provider_credentials(handle)")
+    .select(
+      "id, organization_id, transaction_nsu, amount_cents, handle_do_recebedor, payment_provider_credentials(handle)",
+    )
     .eq("status", "paid")
     .not("conferido_pelo_recibo_em", "is", null)
     .not("transaction_nsu", "is", null)

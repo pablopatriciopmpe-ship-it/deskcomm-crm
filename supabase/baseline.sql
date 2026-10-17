@@ -55271,8 +55271,14 @@ alter table public.payment_provider_credentials
   add constraint payment_provider_credentials_provider_check
   check (provider in ('infinitepay'));
 
--- O carimbo e quem carimbou andam juntos: um sem o outro é registro que não
--- responde "quem disse que estava conferido?".
+-- Quem carimbou IMPLICA quando: `_por` preenchido exige `_em`. A volta NÃO é
+-- exigida de propósito. A bicondicional parecia mais forte e era um defeito:
+-- `_por` é `on delete set null`, então apagar o usuário que assinou zeraria só
+-- `_por` e a bicondicional recusaria o UPDATE — o DELETE em `auth.users`
+-- falharia, e com ele a remoção de usuário e a cascata de LGPD. O carimbo
+-- sobrevive à saída de quem assinou; a pergunta "quem disse que estava
+-- conferido?" continua respondida, e por quem responde de verdade:
+-- `api_audit_log`, que é append-only e não tem FK para o usuário.
 -- O hash tem forma fixa. Sem isto, um INSERT com o token EM CLARO na coluna
 -- passaria calado — e o segredo que esta migration tirou do banco voltaria por
 -- descuido de quem escreve a tela.
@@ -55293,13 +55299,13 @@ alter table public.payment_provider_credentials
   drop constraint if exists payment_provider_credentials_conferencia_coerente;
 alter table public.payment_provider_credentials
   add constraint payment_provider_credentials_conferencia_coerente
-  check ((pix_conferido_em is null) = (pix_conferido_por is null));
+  check (pix_conferido_por is null or pix_conferido_em is not null);
 
 alter table public.payment_provider_credentials
   drop constraint if exists payment_provider_credentials_webhook_conferencia_coerente;
 alter table public.payment_provider_credentials
   add constraint payment_provider_credentials_webhook_conferencia_coerente
-  check ((webhook_conferido_em is null) = (webhook_conferido_por is null));
+  check (webhook_conferido_por is null or webhook_conferido_em is not null);
 
 -- Uma conta ATIVA por organização e provedor. Parcial: a desativada fica como
 -- histórico (foi com ela que as cobranças antigas nasceram).
@@ -55416,6 +55422,15 @@ create table if not exists public.payment_charges (
   disputed_at timestamptz,
 
   -- O carimbo da segunda camada: quando o recibo público foi buscado e bateu.
+  -- SNAPSHOT de QUEM RECEBE, no momento em que a cobranca nasceu. Mesmo
+  -- idioma do snapshot de nome e codigo em `order_items`, e pela mesma razao:
+  -- a conta e MUTAVEL. Sem o retrato, trocar a InfiniteTag durante uma venda em
+  -- voo faria a conferencia do recibo comparar o recibo da conta ANTIGA (onde o
+  -- dinheiro caiu) com o handle da conta NOVA — nenhuma venda confirmaria, e o
+  -- cliente que pagou nao receberia. `credential_id` aponta para a LINHA, que
+  -- muda; esta coluna guarda o valor que valia.
+  handle_do_recebedor text,
+
   conferido_pelo_recibo_em timestamptz,
 
   -- A PORTA MANUAL. A conferência automática lê o HTML do recibo do provedor,

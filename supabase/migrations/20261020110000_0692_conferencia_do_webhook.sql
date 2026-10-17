@@ -42,13 +42,15 @@ alter table public.payment_provider_credentials
 comment on column public.payment_provider_credentials.webhook_conferido_em is
   'Quando alguém confirmou À MÃO que o webhook deste CRM está cadastrado no painel do provedor (migration 0692). Existe porque isso não é verificável pela API, e porque a falha é a pior do módulo: sem webhook o cliente paga e o CRM nunca sabe. A prova real chega no primeiro aviso de pagamento que entra.';
 
--- O carimbo e quem carimbou andam juntos, igual ao par da chave PIX: um sem o
--- outro é registro que não responde "quem disse que estava conferido?".
+-- Mesma forma do par da chave PIX, e pela mesma razão medida: `_por` IMPLICA
+-- `_em`, nunca o contrário. `_por` é `on delete set null`, e a bicondicional
+-- faria o DELETE do usuário que assinou falhar — levando com ele a remoção de
+-- usuário e a cascata de LGPD. Quem assinou fica em `api_audit_log`.
 alter table public.payment_provider_credentials
   drop constraint if exists payment_provider_credentials_webhook_conferencia_coerente;
 alter table public.payment_provider_credentials
   add constraint payment_provider_credentials_webhook_conferencia_coerente
-  check ((webhook_conferido_em is null) = (webhook_conferido_por is null));
+  check (webhook_conferido_por is null or webhook_conferido_em is not null);
 
 -- As colunas novas entram no FIM da view: `create or replace view` aceita
 -- ACRESCENTAR coluna, e recusa remover ou reordenar.

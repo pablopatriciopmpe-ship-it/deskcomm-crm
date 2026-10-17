@@ -95,6 +95,7 @@ beforeEach(() => {
       order_id: "pedido-1",
       status: "pending",
       amount_cents: 12990,
+      handle_do_recebedor: "minhaloja",
       payment_provider_credentials: { handle: "minhaloja" },
     },
     arquivos: [{ id: "arq-1" }],
@@ -140,8 +141,25 @@ describe("o que é conferido", () => {
     expect(h.conferencias[0]).toMatchObject({ amountCentsEsperado: 12990, handle: "minhaloja" });
   });
 
+  it("o handle conferido é o do RETRATO, não o da conta atual", async () => {
+    // A organização trocou de InfiniteTag depois desta cobrança. O dinheiro
+    // caiu na conta ANTIGA e é o handle dela que o recibo mostra: comparar com
+    // a atual recusaria uma venda legítima, e o cliente que pagou não receberia.
+    m.cobranca = {
+      ...m.cobranca!,
+      handle_do_recebedor: "lojaantiga",
+      payment_provider_credentials: { handle: "lojanova" },
+    };
+    await confirmarPagamentoHandler.handle(evento());
+    expect(h.conferencias[0]).toMatchObject({ handle: "lojaantiga" });
+  });
+
   it("conta sem handle não confere nada", async () => {
-    m.cobranca = { ...m.cobranca!, payment_provider_credentials: null };
+    m.cobranca = {
+      ...m.cobranca!,
+      handle_do_recebedor: null,
+      payment_provider_credentials: null,
+    };
     const r = await confirmarPagamentoHandler.handle(evento());
     expect(r).toMatchObject({ status: "skipped", detail: "conta_sem_handle" });
     expect(h.conferencias).toHaveLength(0);

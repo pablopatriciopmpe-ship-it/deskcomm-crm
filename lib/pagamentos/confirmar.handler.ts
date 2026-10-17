@@ -55,7 +55,7 @@ async function handle(row: EventRow): Promise<HandlerResult> {
   const { data: cobranca, error } = await admin
     .from("payment_charges")
     .select(
-      "id, order_id, status, amount_cents, payment_provider_credentials(handle)",
+      "id, order_id, status, amount_cents, handle_do_recebedor, payment_provider_credentials(handle)",
     )
     .eq("id", row.entity_id)
     .eq("organization_id", row.organization_id)
@@ -68,11 +68,18 @@ async function handle(row: EventRow): Promise<HandlerResult> {
   const nsu = typeof row.payload.transaction_nsu === "string" ? row.payload.transaction_nsu : "";
   if (!nsu) return resultado("skipped", "aviso_sem_transacao");
 
+  // O RETRATO primeiro, a linha depois. A conta é mutável: se a organização
+  // trocou a InfiniteTag entre a criação desta cobrança e o aviso, o dinheiro
+  // caiu na conta ANTIGA e é o handle dela que o recibo mostra. Comparar com o
+  // handle ATUAL recusaria uma venda legítima — o cliente teria pagado e não
+  // receberia. O ponteiro só responde quando não há retrato.
   const bruto = (cobranca as { payment_provider_credentials?: unknown })
     .payment_provider_credentials;
-  const handle_ = Array.isArray(bruto)
+  const handleDaLinha = Array.isArray(bruto)
     ? (bruto[0] as { handle?: string } | undefined)?.handle
     : (bruto as { handle?: string } | null)?.handle;
+  const handle_ =
+    (cobranca as { handle_do_recebedor?: string | null }).handle_do_recebedor ?? handleDaLinha;
   if (!handle_) return resultado("skipped", "conta_sem_handle");
 
   try {

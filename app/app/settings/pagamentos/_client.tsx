@@ -71,7 +71,12 @@ export function ContaDePagamento({ inicial }: { inicial: EstadoDaConta }) {
         webhookConferidoEm: d.webhook_conferido_em ?? null,
         webhookUrl: d.webhook_url,
       });
-      setHandle(d.handle ?? "");
+      // NÃO apaga o rascunho: se a pessoa digitou uma tag nova e a gravação
+      // falhou, sobrescrever o campo com o valor do servidor jogaria fora o que
+      // ela escreveu. Só sincroniza o campo quando ele não foi editado.
+      setHandle((digitado) =>
+        digitado.trim() === (conta.handle ?? "") ? (d.handle ?? "") : digitado,
+      );
     } catch {
       // Se nem a releitura responde, a tela fica como está e o aviso de erro
       // que o chamador já mostrou é o que a pessoa tem.
@@ -106,6 +111,10 @@ export function ContaDePagamento({ inicial }: { inicial: EstadoDaConta }) {
         pixConferidoEm: trocou ? null : conta.pixConferidoEm,
         webhookConferidoEm: trocou ? null : conta.webhookConferidoEm,
       });
+      // O servidor guarda a tag SEM o `$`. Sem refletir isso no campo, quem
+      // digitou `$minhaloja` ficaria com `temEdicaoNaoSalva` eternamente
+      // verdadeiro — e os dois botões de conferência travados, sem explicação.
+      setHandle(corpo.data.handle);
       toast.success("Conta salva.");
     } catch {
       toast.error("Não deu para falar com o servidor. Confira como ficou.");

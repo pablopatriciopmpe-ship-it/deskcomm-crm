@@ -162,6 +162,12 @@ export async function cobrarProduto(
       organization_id: pedido.organizationId,
       order_id: order.id,
       credential_id: conta.id,
+      // O RETRATO de quem recebe, não só o ponteiro para a linha. A conta é
+      // mutável: trocar a InfiniteTag agora, com esta venda em voo, faria a
+      // conferência comparar o recibo da conta ANTIGA (onde o dinheiro caiu)
+      // com o handle da conta NOVA — a venda nunca confirmaria e o cliente que
+      // pagou não receberia.
+      handle_do_recebedor: conta.handle,
       provider: PROVEDOR_INFINITEPAY,
       amount_cents: total,
       currency: "BRL",
