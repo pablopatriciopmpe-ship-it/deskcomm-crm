@@ -9,6 +9,7 @@ import { useT } from "@/hooks/i18n/useT";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api/client";
 import { queryDaTela } from "@/lib/catalogo/busca-da-tela";
+import { MAXIMO_DE_ARQUIVOS } from "@/lib/catalogo/arquivos-do-produto";
 import { MAXIMO_DE_FOTOS } from "@/lib/catalogo/fotos";
 import { formatCents } from "@/lib/money";
 import { precoParaCentavos, type Produto } from "@/lib/schemas/produtos";
@@ -80,6 +81,152 @@ function doRascunho(
  * Toda mudança vai ao servidor e volta pelo `router.refresh()`: as URLs são
  * assinadas pela página, e a lista que vale é a do banco.
  */
+export interface ArquivoDoProduto {
+  id: string;
+  nome_arquivo: string;
+  mime: string;
+  bytes: number;
+}
+
+function tamanhoLegivel(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * OS ARQUIVOS ENTREGÁVEIS de UM produto — o que o comprador recebe depois de
+ * pagar.
+ *
+ * Não confundir com o painel de fotos acima: foto é vitrine, isto é o produto.
+ * Enquanto não houver arquivo aqui, a venda acontece e a entrega não — o aviso
+ * no topo do painel diz isso, porque é o erro mais caro desta tela.
+ *
+ * O aviso da remoção também é literal de propósito: a página de entrega lê esta
+ * lista AO VIVO, então tirar um arquivo o tira de quem JÁ comprou. Quem decide
+ * tem de saber antes de clicar, não depois do cliente reclamar.
+ */
+function ArquivosDoProduto({
+  produto,
+  arquivos,
+}: {
+  produto: Produto;
+  arquivos: ArquivoDoProduto[];
+}) {
+  const t = useT();
+  const router = useRouter();
+  const [ocupado, setOcupado] = React.useState(false);
+  const entradaRef = React.useRef<HTMLInputElement>(null);
+
+  async function subir(arquivo: File) {
+    setOcupado(true);
+    try {
+      const form = new FormData();
+      form.append("file", arquivo);
+      const res = await fetch(`/api/v1/products/${produto.id}/arquivos`, {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        toast.error(json?.error?.message ?? t("Não consegui enviar o arquivo."));
+        return;
+      }
+      toast.success(t("Arquivo adicionado"));
+      router.refresh();
+    } catch {
+      toast.error(t("Não consegui enviar o arquivo."));
+    } finally {
+      setOcupado(false);
+      if (entradaRef.current) entradaRef.current.value = "";
+    }
+  }
+
+  async function tirar(id: string) {
+    setOcupado(true);
+    try {
+      const res = await fetch(`/api/v1/products/${produto.id}/arquivos`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ arquivo_id: id }),
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        toast.error(json?.error?.message ?? t("Não consegui tirar o arquivo."));
+        return;
+      }
+      toast.success(t("Arquivo removido"));
+      router.refresh();
+    } catch {
+      toast.error(t("Não consegui tirar o arquivo."));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="border-t bg-muted/30 p-3" data-testid={`arquivos-${produto.codigo}`}>
+      {arquivos.length === 0 ? (
+        <p className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+          {t(
+            "Sem arquivo aqui, este produto é vendido e NÃO é entregue: o cliente paga e não recebe nada. Suba o que ele compra.",
+          )}
+        </p>
+      ) : (
+        <p className="mb-2 text-xs text-muted-foreground">
+          {t(
+            "É isto que o cliente recebe depois de pagar, numa página com endereço secreto que vence em 30 dias.",
+          )}
+        </p>
+      )}
+
+      <ul className="mb-3 flex flex-col gap-2">
+        {arquivos.map((a) => (
+          <li
+            key={a.id}
+            className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2"
+          >
+            <span className="truncate text-sm font-medium">{a.nome_arquivo}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {tamanhoLegivel(a.bytes)}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={ocupado}
+              onClick={() => void tirar(a.id)}
+              data-testid={`tirar-arquivo-${a.id}`}
+            >
+              {t("Tirar")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+
+      <input
+        ref={entradaRef}
+        type="file"
+        className="block text-sm"
+        disabled={ocupado || arquivos.length >= MAXIMO_DE_ARQUIVOS}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void subir(f);
+        }}
+      />
+      <p className="mt-2 text-xs text-muted-foreground">
+        {t("PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD ou TXT, até 500 MB. No máximo 10 por produto.")}
+      </p>
+      {arquivos.length > 0 ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t(
+            "Tirar um arquivo tira de TODOS, inclusive de quem já comprou: a página de entrega mostra esta lista como ela está agora.",
+          )}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function FotosDoProduto({ produto, urls }: { produto: Produto; urls: Record<string, string> }) {
   const t = useT();
   const router = useRouter();
@@ -217,6 +364,7 @@ export function ProdutosClient({
   porPagina,
   buscaInicial,
   urlsDasFotos,
+  arquivosPorProduto,
   podeEditar,
   textos,
 }: {
@@ -228,6 +376,7 @@ export function ProdutosClient({
   porPagina: number;
   buscaInicial: string;
   urlsDasFotos: Record<string, string>;
+  arquivosPorProduto: Record<string, ArquivoDoProduto[]>;
   podeEditar: boolean;
   textos: Textos;
 }) {
@@ -254,6 +403,7 @@ export function ProdutosClient({
   const [resumo, setResumo] = React.useState<ResumoDaImportacao | null>(null);
   const arquivoRef = React.useRef<HTMLInputElement>(null);
   const [fotosAbertas, setFotosAbertas] = React.useState<string | null>(null);
+  const [arquivosAbertos, setArquivosAbertos] = React.useState<string | null>(null);
   const [editando, setEditando] = React.useState<string | null>(null);
 
   // A busca vai à URL — e a URL, ao servidor, que procura no catálogo INTEIRO.
@@ -581,6 +731,15 @@ export function ProdutosClient({
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => setArquivosAbertos((v) => (v === p.id ? null : p.id))}
+                    aria-expanded={arquivosAbertos === p.id}
+                    data-testid={`abrir-arquivos-${p.codigo}`}
+                  >
+                    {t("Entrega")} ({arquivosPorProduto[p.id]?.length ?? 0})
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => void alternarAtivo(p)}
                     data-testid={`alternar-${p.codigo}`}
                   >
@@ -591,6 +750,9 @@ export function ProdutosClient({
             </div>
             {podeEditar && fotosAbertas === p.id ? (
               <FotosDoProduto produto={p} urls={urlsDasFotos} />
+            ) : null}
+            {podeEditar && arquivosAbertos === p.id ? (
+              <ArquivosDoProduto key={p.id} produto={p} arquivos={arquivosPorProduto[p.id] ?? []} />
             ) : null}
             {podeEditar && editando === p.id ? (
               // `key` porque o painel fica na MESMA posição do DOM ao trocar de

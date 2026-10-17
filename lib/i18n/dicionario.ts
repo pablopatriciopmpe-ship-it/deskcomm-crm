@@ -16151,6 +16151,23 @@ export const DICIONARIO: Traducoes = {
   "recusado": { es: "rechazado" },
   "Recusado.": { es: "Rechazado." },
 
+  // ── Arquivos entregáveis do produto (o que o comprador recebe) ────────
+  "Arquivo adicionado": { es: "Archivo añadido" },
+  "Arquivo removido": { es: "Archivo eliminado" },
+  "Não consegui tirar o arquivo.": { es: "No pude eliminar el archivo." },
+  "Sem arquivo aqui, este produto é vendido e NÃO é entregue: o cliente paga e não recebe nada. Suba o que ele compra.": { es: "Sin archivo aquí, este producto se vende y NO se entrega: el cliente paga y no recibe nada. Sube lo que él compra." },
+  "É isto que o cliente recebe depois de pagar, numa página com endereço secreto que vence em 30 dias.": { es: "Esto es lo que el cliente recibe después de pagar, en una página con dirección secreta que vence en 30 días." },
+  "Tirar": { es: "Eliminar" },
+  "PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD ou TXT, até 500 MB. No máximo 10 por produto.": { es: "PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD o TXT, hasta 500 MB. Como máximo 10 por producto." },
+  "Tirar um arquivo tira de TODOS, inclusive de quem já comprou: a página de entrega mostra esta lista como ela está agora.": { es: "Eliminar un archivo lo quita para TODOS, incluso para quien ya compró: la página de entrega muestra esta lista tal como está ahora." },
+  "Entrega": { es: "Entrega" },
+  "Cada produto entrega no máximo 10 arquivos.": { es: "Cada producto entrega como máximo 10 archivos." },
+  "O arquivo precisa ter até 500 MB.": { es: "El archivo debe tener hasta 500 MB." },
+  "O arquivo está vazio.": { es: "El archivo está vacío." },
+  "Dá para entregar PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD ou TXT.": { es: "Se puede entregar PDF, EPUB, ZIP, MP4, MP3, PNG, JPG, MD o TXT." },
+  "Diga qual arquivo tirar.": { es: "Indica qué archivo eliminar." },
+  "Arquivo não encontrado.": { es: "Archivo no encontrado." },
+
   // ── Receber pagamentos por PIX (a conta, os três carimbos e a página
   //    pública da entrega) ──────────────────────────────────────────────
   "Receber pagamentos": { es: "Recibir pagos" },

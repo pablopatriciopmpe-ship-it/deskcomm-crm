@@ -76,7 +76,7 @@
 --     carimbo antes de deixar a organização vender.
 --
 -- (B) A TENTATIVA é separada do pedido porque um pedido tem várias: o cliente
---     some e volta, aceita o adicional depois do primeiro link. E é aqui que
+--     some e volta, o primeiro link vence, ele tenta de novo. E é aqui que
 --     mora o estado fino. `orders.status` aceita
 --     pending/paid/cancelled/fulfilled/shipped/delivered/refunded — não tem
 --     `expired` nem `disputed`, e alargar aquele CHECK é a armadilha da 0623.
@@ -447,8 +447,13 @@ create table if not exists public.order_items (
   desconto_cents bigint not null default 0,
   position integer not null default 0,
 
-  -- De onde veio o item: o adicional aceito na conversa não é o item principal,
-  -- e o relatório de order bump precisa dos dois distinguíveis.
+  -- COMO o item entrou no pedido. Hoje só `principal` é escrito: o adicional
+  -- (order bump) saiu desta entrega porque não havia tela nem consumidor para
+  -- ele — tabela sem porta é peso morto pela doutrina da casa. A coluna fica
+  -- porque "como este item entrou" é propriedade do próprio item, não da
+  -- funcionalidade que o colocou ali, e `order_items` é registro do que foi
+  -- vendido: um item que amanhã entrar por oferta precisa ser distinguível do
+  -- que o cliente pediu, inclusive nos pedidos já fechados.
   origem text not null default 'principal',
 
   created_at timestamptz not null default now()

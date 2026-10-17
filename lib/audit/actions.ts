@@ -720,6 +720,12 @@ export const AUDIT_ACTIONS = [
   // As fotos do produto (migration 0390): subir uma, e reordenar/remover.
   "catalog_product.photo_added",
   "catalog_product.photos_updated",
+  // Os arquivos ENTREGÁVEIS do produto — o que o comprador recebe depois de
+  // pagar, não a vitrine. Tirar um arquivo o tira de QUEM JÁ COMPROU (a página
+  // de entrega lê ao vivo), então a trilha de quem mexeu é a única forma de
+  // responder "por que o cliente parou de conseguir baixar?".
+  "catalog_product.file_added",
+  "catalog_product.file_removed",
 
   // As tarefas do CRM (migration 0210). Tarefa é combinado de trabalho entre
   // pessoas do time — quem a criou, quem mudou o prazo e quem a apagou é
