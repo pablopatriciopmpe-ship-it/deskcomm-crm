@@ -226,8 +226,15 @@ async function entregar(
     );
   } catch (e) {
     // Mensagem recusada (contato pediu para não receber, janela fechada) NÃO
-    // desfaz a entrega: ela existe e o link continua válido. Quem opera vê o
-    // pedido pago e pode reenviar.
+    // desfaz a entrega: ela existe, o link continua válido por 30 dias, e o
+    // pedido pago aparece no painel do contato, dentro da conversa.
+    //
+    // ⚠️ MAS NÃO HÁ COMO REENVIAR O LINK. Este comentário dizia "quem opera vê
+    // o pedido pago e pode reenviar", e a segunda metade era falsa: nenhuma
+    // tela lê `order_deliveries`, e o token em claro não existe mais em lugar
+    // nenhum (é hash no banco, de propósito). Então hoje, quando o aviso não
+    // sai, quem comprou fica sem o endereço até alguém construir o reenvio —
+    // que gera um link novo e revoga este. É o buraco conhecido deste módulo.
     logger.warn("[pagamentos.confirmar] entrega criada mas o aviso não saiu", {
       pedido: orderId,
       erro: e instanceof Error ? e.message : "desconhecido",

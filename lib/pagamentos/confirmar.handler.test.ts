@@ -215,7 +215,9 @@ describe("quando confere", () => {
 
   it("aviso recusado NÃO desfaz a entrega", async () => {
     // O contato pediu para não receber, ou a janela fechou. A entrega existe e
-    // o link vale; quem opera vê o pedido pago e pode reenviar.
+    // o link vale 30 dias — mas NÃO há como reenviá-lo hoje (ver o cabeçalho do
+    // handler). O que este caso prende é que a falha do aviso não desfaz a
+    // entrega: desfazer deixaria o pedido pago sem entrega nenhuma.
     h.erroDoEnvio = new Error("forbidden");
     const r = await confirmarPagamentoHandler.handle(evento());
     expect(r).toMatchObject({ status: "ok", detail: "entregue_sem_aviso" });
