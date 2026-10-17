@@ -120,6 +120,10 @@ export const DICIONARIO: Traducoes = {
   "Autorizar IA para leads deste formulário": { es: "Autorizar IA para los leads de este formulario" },
   "Autoriza somente novos envios completos com consentimento explícito para atendimento automatizado. Não retoma contatos bloqueados ou em atendimento humano. O agente e o canal precisam estar configurados para atender.": { es: "Autoriza solo nuevos envíos completos con consentimiento explícito para atención automatizada. No retoma contactos bloqueados o atendidos por una persona. El agente y el canal deben estar configurados para atender." },
   "O integrador deve enviar external_id, ai_service_consent: true, submission_status: completed e ai_service_consent_version com a versão do aviso aceito. Aceitar apenas a política de privacidade não autoriza a IA. Sem external_id, o envio não concede nem renova a autorização; reenviar com o mesmo external_id não libera de novo. Uma recusa (false) num envio completo e válido revoga, mesmo sem external_id.": { es: "El integrador debe enviar external_id, ai_service_consent: true, submission_status: completed y ai_service_consent_version con la versión del aviso aceptado. Aceptar solo la política de privacidad no autoriza la IA. Sin external_id, el envío no concede ni renueva la autorización; reenviar con el mismo external_id no vuelve a autorizar. Un rechazo (false) en un envío completo y válido revoca, incluso sin external_id." },
+  // Atualização do card pela integração (#2316) — a opção irmã da de IA.
+  "Atualizar o card quando o envio repete o mesmo cadastro": { es: "Actualizar la tarjeta cuando el envío repite el mismo registro" },
+  "Só para integrações entre sistemas: ligado, um envio com o mesmo external_id que traga dado novo atualiza o card desta fonte — os campos, o título e a etapa pedida em stage, sempre para a frente. Desligado, o padrão, o envio repetido continua sendo reenvio e nada no card muda, nem o que a equipe corrigiu à mão.": { es: "Solo para integraciones entre sistemas: activado, un envío con el mismo external_id que traiga datos nuevos actualiza la tarjeta de esta fuente — los campos, el título y la etapa pedida en stage, siempre hacia adelante. Desactivado, lo predeterminado, el envío repetido sigue siendo un reenvío y nada en la tarjeta cambia, ni lo que el equipo corrigió a mano." },
+  "Configure a assinatura da fonte antes de deixar a integração atualizar o card. Para remover a assinatura, desligue primeiro a atualização pelo external_id.": { es: "Configura la firma de la fuente antes de permitir que la integración actualice la tarjeta. Para quitar la firma, desactiva primero la actualización por external_id." },
 
   // A conferência de fato (#2231): a terceira camada do before_send.
   "Conferir afirmações de fato na resposta": { es: "Verificar las afirmaciones de hecho de la respuesta" },
@@ -1173,6 +1177,13 @@ export const DICIONARIO: Traducoes = {
   "Salvar responsáveis": { es: "Guardar responsables" },
   "Voltar ao padrão da organização": { es: "Volver al valor predeterminado de la organización" },
   "Responsáveis salvos.": { es: "Responsables guardados." },
+  // ─── Regras de atendimento POR NÚMERO (#2331) ───
+  "Como este número distribui": { es: "Cómo distribuye este número" },
+  "Usar o padrão da organização": { es: "Usar el valor predeterminado de la organización" },
+  "Vale só para este número. Os números sem regra própria continuam com o que está definido para a organização.": { es: "Vale solo para este número. Los números sin regla propia siguen con lo definido para la organización." },
+  "Atendente de destino padrão": { es: "Asesor de destino predeterminado" },
+  "Nenhum — distribuir pelo modo": { es: "Ninguno — distribuir por el modo" },
+  "Escolhendo uma pessoa, todo cliente novo deste número vai direto para ela, sem passar pela distribuição. Precisa estar disponível para receber.": { es: "Al elegir una persona, todo cliente nuevo de este número va directo a ella, sin pasar por la distribución. Debe estar disponible para recibir." },
   // ─── Assinatura do emissor (#2066, PR #2079) ───
   "Quem fala aparece na mensagem?": { es: "¿Quién habla aparece en el mensaje?" },
   "Ligado, a mensagem que vai ao cliente ganha o nome de quem fala em negrito, na linha de cima. O histórico do CRM guarda o texto como foi escrito. Campanhas, lembretes e integrações por token não assinam.": { es: "Activado, el mensaje que llega al cliente lleva el nombre de quien habla en negrita, en la primera línea. El historial del CRM guarda el texto tal como se escribió. Las campañas, los recordatorios y las integraciones por token no firman." },
@@ -1487,7 +1498,6 @@ export const DICIONARIO: Traducoes = {
   "Só entram na inbox os grupos ligados em Conexões › Grupos, e cada um aparece aqui a partir da primeira mensagem recebida depois de ligar (o histórico anterior não entra).": { es: "Solo entran en la bandeja los grupos activados en Conexiones › Grupos, y cada uno aparece aquí a partir del primer mensaje recibido después de activarlo (el historial anterior no entra)." },
   "Ativos:": { es: "Activos:" },
   "Busca": { es: "Búsqueda" },
-  "Esta conversa não está na sua carteira.": { es: "Esta conversación no está en su cartera." },
   "Etiqueta": { es: "Etiqueta" },
   "Buscar por nome, telefone ou última mensagem…": {
     es: "Buscar por nombre, teléfono o último mensaje…",
@@ -1553,6 +1563,14 @@ export const DICIONARIO: Traducoes = {
   atualizadas: { es: "actualizadas" },
   recusadas: { es: "rechazadas" },
   "Recusada.": { es: "Rechazada." },
+  // O MESMO relatório, no singular (#2990): o verbo era fixo no plural e a barra
+  // escrevia "1 conversas fechadas" / "1 fechadas, 1 recusadas". "Conversa" é
+  // feminino, então o particípio e a recusa vão no feminino.
+  fechada: { es: "cerrada" },
+  atualizada: { es: "actualizada" },
+  recusada: { es: "rechazada" },
+  "1 conversa fechada.": { es: "1 conversación cerrada." },
+  "1 conversa atualizada.": { es: "1 conversación actualizada." },
   Aberta: { es: "Abierta" },
   Fechada: { es: "Cerrada" },
   "Em atendimento": { es: "En atención" },
@@ -1866,16 +1884,17 @@ export const DICIONARIO: Traducoes = {
   "Central de avisos": { es: "Central de avisos" },
   "em aberto": { es: "abiertos" },
   // ─── Agentes de IA: lista ───
-  "Agents de IA": { es: "Agentes de IA" },
-  "Configure o comportamento dos agents que respondem no WhatsApp.": {
+  "Agentes de IA": { es: "Agentes de IA" },
+  "Configure o comportamento dos agentes que respondem no WhatsApp.": {
     es: "Configura el comportamiento de los agentes que responden en WhatsApp.",
   },
-  "Nenhum agent configurado": { es: "Ningún agente configurado" },
-  "Crie um agent para responder a conversas no WhatsApp com IA. Você configura prompt, tools, gatilhos e janela de contexto.": {
+  "Nenhum agente configurado": { es: "Ningún agente configurado" },
+  "Crie um agente para responder a conversas no WhatsApp com IA. Você configura prompt, tools, gatilhos e janela de contexto.": {
     es: "Crea un agente para responder conversaciones de WhatsApp con IA. Configuras el prompt, las herramientas, los disparadores y la ventana de contexto.",
   },
   "Novo agente": { es: "Nuevo agente" },
-  "Nenhum agent corresponde aos filtros atuais.": {
+  "Criar novo": { es: "Crear nuevo" },
+  "Nenhum agente corresponde aos filtros atuais.": {
     es: "Ningún agente coincide con los filtros actuales.",
   },
   "Buscar por nome…": { es: "Buscar por nombre…" },
@@ -4541,6 +4560,46 @@ export const DICIONARIO: Traducoes = {
   "Pegar uma chave nova na TypeSafe": {
     es: "Obtener una clave nueva en TypeSafe",
   },
+  // ── O Jev por OpenRouter (issue #2947) ────────────────────────────────────
+  // O mesmo Jev, com o endereço e o nome de modelo da OpenRouter, reaproveitando
+  // a credencial OpenRouter da empresa. As frases acompanham a origem escolhida:
+  // dizer "TypeSafe" a quem escolheu OpenRouter apontaria a conta errada.
+  "De onde o Jev responde": { es: "Desde dónde responde Jev" },
+  "TypeSafe AI (chave própria)": { es: "TypeSafe AI (clave propia)" },
+  "OpenRouter (reaproveita a credencial OpenRouter)": {
+    es: "OpenRouter (reutiliza la credencial de OpenRouter)",
+  },
+  "Origem do Jev salva.": { es: "Origen de Jev guardado." },
+  "O Jev responde direto na TypeSafe AI, com a chave dele cadastrada em Credenciais.": {
+    es: "Jev responde directamente en TypeSafe AI, con su clave registrada en Credenciales.",
+  },
+  "O Jev responde pela OpenRouter usando a credencial OpenRouter desta empresa — a mesma chave da conversa, sem segunda conta e sem segunda chave.": {
+    es: "Jev responde por OpenRouter usando la credencial de OpenRouter de esta empresa: la misma clave de la conversación, sin una segunda cuenta ni una segunda clave.",
+  },
+  "Para o Jev responder pela OpenRouter, cadastre a chave da OpenRouter em Credenciais. É a mesma chave que a sua IA de conversa usa.": {
+    es: "Para que Jev responda por OpenRouter, registra la clave de OpenRouter en Credenciales. Es la misma clave que usa tu IA de conversación.",
+  },
+  "Para o Jev responder pela OpenRouter, a chave da OpenRouter precisa estar cadastrada e conferida em Credenciais. É a mesma chave que a sua IA de conversa usa.": {
+    es: "Para que Jev responda por OpenRouter, la clave de OpenRouter tiene que estar registrada y verificada en Credenciales. Es la misma clave que usa tu IA de conversación.",
+  },
+  "Para o Jev responder pela TypeSafe, cole a chave dele em Credenciais e espere o teste da chave passar.": {
+    es: "Para que Jev responda por TypeSafe, pega su clave en Credenciales y espera a que pase la prueba de la clave.",
+  },
+  "Esta empresa já tem uma credencial OpenRouter conferida: dá para o Jev usá-la sem cadastrar chave nova.": {
+    es: "Esta empresa ya tiene una credencial de OpenRouter verificada: Jev puede usarla sin registrar una clave nueva.",
+  },
+  "Pegar a chave na OpenRouter": { es: "Obtener la clave en OpenRouter" },
+  "Pegar uma chave nova na OpenRouter": { es: "Obtener una clave nueva en OpenRouter" },
+  "Chave conferida na OpenRouter": { es: "Clave verificada en OpenRouter" },
+  "Não precisa de uma segunda conta: o Jev via OpenRouter usa a credencial OpenRouter desta empresa, e quem cobra o uso é a própria OpenRouter. A chave começa com": {
+    es: "No hace falta una segunda cuenta: Jev por OpenRouter usa la credencial de OpenRouter de esta empresa, y quien cobra el uso es la propia OpenRouter. La clave empieza con",
+  },
+  "A OpenRouter recusou a chave. Confira se copiou inteira ou gere uma nova.": {
+    es: "OpenRouter rechazó la clave. Verifica si la copiaste completa o genera una nueva.",
+  },
+  "A OpenRouter recusou a chave. Confira se ela está inteira e se a conta na OpenRouter tem crédito.": {
+    es: "OpenRouter rechazó la clave. Verifica si está completa y si la cuenta en OpenRouter tiene crédito.",
+  },
   "Sem uma IA principal que meça o clima, o Jev já começa decidindo sozinho nessa tarefa: não há com quem comparar nem quem cubra uma falha dele.": {
     es: "Sin una IA principal que mida el clima, Jev empieza decidiendo por su cuenta en esa tarea: no hay con quién comparar ni quién cubra una falla suya.",
   },
@@ -4646,6 +4705,13 @@ export const DICIONARIO: Traducoes = {
   "Concordo com o envio de cada mensagem dos clientes, uma de cada vez e sem o resto da conversa, para a TypeSafe AI, nos Estados Unidos.": {
     es: "Estoy de acuerdo con el envío de cada mensaje de los clientes, uno por vez y sin el resto de la conversación, a TypeSafe AI, en Estados Unidos.",
   },
+  "Ao ligar, cada mensagem que o cliente manda vai para a TypeSafe AI, pela OpenRouter, nos Estados Unidos, uma de cada vez e sem o resto da conversa, para o Jev avaliar. Antes de sair, o sistema apaga CPF, telefone e e-mail do texto. Com o Jev desligado, nada é enviado.": {
+    es: "Al activarlo, cada mensaje que envía el cliente va a TypeSafe AI, a través de OpenRouter, en Estados Unidos, uno por vez y sin el resto de la conversación, para que Jev lo evalúe. Antes de salir, el sistema borra del texto el CPF, el teléfono y el correo. Con Jev desactivado, no se envía nada.",
+  },
+  "Concordo com o envio de cada mensagem dos clientes, uma de cada vez e sem o resto da conversa, para a TypeSafe AI, pela OpenRouter, nos Estados Unidos.": {
+    es: "Estoy de acuerdo con el envío de cada mensaje de los clientes, uno por vez y sin el resto de la conversación, a TypeSafe AI, a través de OpenRouter, en Estados Unidos.",
+  },
+  "Trocar para a OpenRouter": { es: "Cambiar a OpenRouter" },
   "Envio aceito pela empresa em": { es: "Envío aceptado por la empresa el" },
   "Ligar o Jev": { es: "Activar Jev" },
   "O Jev foi ligado.": { es: "Jev se activó." },
@@ -5125,6 +5191,14 @@ export const DICIONARIO: Traducoes = {
   "Tenant redigido — ação não disponível": { es: "Tenant anonimizado — acción no disponible" },
   "Suspender tenant": { es: "Suspender tenant" },
   "Reativar tenant": { es: "Reactivar tenant" },
+  // ─── #2778 — os três botões de ícone de TODA linha da listagem de tenants ───
+  // `aria-label` E `title`, os dois saem daqui: o botão é só ícone, então o
+  // rótulo é a ÚNICA coisa que o leitor de tela anuncia. Vão com `{nome}` porque
+  // a lista tem 30 linhas iguais — `t()` traduz, `.replace("{nome}", …)` cola o
+  // display_name, que é dado e não se traduz.
+  "Acompanhar a saúde de {nome}": { es: "Dar seguimiento a la salud de {nome}" },
+  "Editar os dados de {nome}": { es: "Editar los datos de {nome}" },
+  "Suspender {nome}": { es: "Suspender a {nome}" },
   // ─── Admin de plataforma: gestão de tenants (editar, excluir, e-mail de acesso) ───
   "Tenant excluído.": { es: "Tenant eliminado." },
   "Logins removidos": { es: "Accesos eliminados" },
@@ -5642,6 +5716,15 @@ export const DICIONARIO: Traducoes = {
   "Respeitamos a janela de envio e o limite diário configurados para esse número em Conexões — fora da janela, a mensagem espera a próxima.": {
     es: "Respetamos la ventana de envío y el límite diario configurados para ese número en Conexiones. Fuera de la ventana, el mensaje espera a la siguiente.",
   },
+  "Imagem ou PDF (opcional)": { es: "Imagen o PDF (opcional)" },
+  "Com uma imagem ou PDF, o texto acima vira a legenda do arquivo. Outros tipos de arquivo são recusados. Depois de 24 horas sem resposta do cliente, a mídia não sai — só um modelo aprovado chega até ele.":
+    {
+      es: "Con una imagen o un PDF, el texto de arriba se convierte en el pie de foto del archivo. Se rechazan otros tipos de archivo. Después de 24 horas sin respuesta del cliente, el contenido multimedia no sale: solo un modelo aprobado llega hasta él.",
+    },
+  "Com uma imagem ou PDF, a mensagem acima vira a legenda do arquivo. Outros tipos de arquivo são recusados. Em número oficial, fora da janela de 24h a mídia não sai — só um modelo aprovado.":
+    {
+      es: "Con una imagen o un PDF, el mensaje de arriba se convierte en el pie de foto del archivo. Se rechazan otros tipos de archivo. En un número oficial, fuera de la ventana de 24 h el contenido multimedia no sale: solo un modelo aprobado.",
+    },
   "Qual agente escreve": { es: "Qué agente escribe" },
   "não publicado": { es: "no publicado" },
   "Nenhum agente está publicado. Publique um em Agentes de IA para poder usá-lo aqui.": {
@@ -6051,6 +6134,7 @@ export const DICIONARIO: Traducoes = {
   "Virou lead": { es: "Se convirtió en lead" },
   Reenvio: { es: "Reenvío" },
   "Não entrou": { es: "No entró" },
+  "Card atualizado": { es: "Tarjeta actualizada" },
   "Criar/mover lead no funil": { es: "Crear/mover lead en el embudo" },
   "Enviar mensagem no WhatsApp": { es: "Enviar mensaje por WhatsApp" },
   "Adicionar tag": { es: "Agregar etiqueta" },
@@ -6822,11 +6906,11 @@ export const DICIONARIO: Traducoes = {
   "Tratar o token como administrador: as permissões marcadas agem com poder de administrador (junto de AGIR no CRM, cria agentes de IA e rascunhos e configura, busca e pausa a prospecção)": {
     es: "Tratar el token como administrador: los permisos marcados actúan con poder de administrador (junto con ACTUAR en el CRM, crea agentes de IA y borradores y configura, busca y pausa la prospección)",
   },
-  "Ler a configuração do agente de IA (exige papel de administrador)": {
-    es: "Leer la configuración del agente de IA (requiere rol de administrador)",
+  "Ler a configuração do agente de IA e dos roteadores de IA (exige papel de administrador)": {
+    es: "Leer la configuración del agente de IA y de los enrutadores de IA (requiere rol de administrador)",
   },
-  "Editar, testar, PUBLICAR, PAUSAR, DESLIGAR e ARQUIVAR o agente de IA que atende seus clientes (exige papel de administrador)": {
-    es: "Editar, probar, PUBLICAR, PAUSAR, DESACTIVAR y ARCHIVAR el agente de IA que atiende a sus clientes (requiere rol de administrador)",
+  "Editar, testar, PUBLICAR, PAUSAR, DESLIGAR e ARQUIVAR o agente de IA que atende seus clientes, e criar, editar, testar e APAGAR os roteadores de IA que escolhem qual agente responde (exige papel de administrador)": {
+    es: "Editar, probar, PUBLICAR, PAUSAR, DESACTIVAR y ARCHIVAR el agente de IA que atiende a sus clientes, y crear, editar, probar y ELIMINAR los enrutadores de IA que eligen qué agente responde (requiere rol de administrador)",
   },
   "Ler contatos": { es: "Leer contactos" },
   "Criar e editar contatos": { es: "Crear y editar contactos" },
@@ -7075,6 +7159,11 @@ export const DICIONARIO: Traducoes = {
     es: "El detalle de cada pasada está en el archivo .update.log, en la carpeta del proyecto en el servidor.",
   },
   "Atualização do sistema": { es: "Actualización del sistema" },
+  // #2755 (item 3) — o aviso de "sem SMTP" no topo do painel de atualização.
+  "Sem SMTP configurado": { es: "Sin SMTP configurado" },
+  "O serviço de login desta instalação não envia e-mail: \"esqueci a senha\" e a confirmação de cadastro não chegam. Configure o servidor de e-mail em /admin/email e, no servidor, rode bash hostgator-setup-kit/update.sh — é ele que leva o SMTP ao serviço de login.": {
+    es: "El servicio de inicio de sesión de esta instalación no envía correo: \"olvidé mi contraseña\" y la confirmación de registro no llegan. Configura el servidor de correo en /admin/email y, en el servidor, ejecuta bash hostgator-setup-kit/update.sh — es él quien lleva el SMTP al servicio de inicio de sesión.",
+  },
   "Guardando uma cópia de segurança dos seus dados": {
     es: "Guardando una copia de seguridad de tus datos",
   },
@@ -10678,6 +10767,9 @@ export const DICIONARIO: Traducoes = {
   // chegam ao admin como a mensagem do erro.
   "Ligar o Jev manda cada mensagem dos clientes, uma de cada vez e sem o resto da conversa, para a TypeSafe AI, nos Estados Unidos. Para ligar, confirme que você está de acordo.": {
     es: "Activar Jev envía cada mensaje de los clientes, uno por vez y sin el resto de la conversación, a TypeSafe AI, en Estados Unidos. Para activarlo, confirma que estás de acuerdo.",
+  },
+  "Pela OpenRouter, cada mensagem dos clientes vai, uma de cada vez e sem o resto da conversa, para a TypeSafe AI, pela OpenRouter, nos Estados Unidos. Para trocar, confirme que você está de acordo.": {
+    es: "A través de OpenRouter, cada mensaje de los clientes va, uno por vez y sin el resto de la conversación, a TypeSafe AI, a través de OpenRouter, en Estados Unidos. Para cambiar, confirma que estás de acuerdo.",
   },
   "Para ligar o Jev, cole a chave dele em Credenciais e espere o teste da chave passar.": {
     es: "Para activar Jev, pega su clave en Credenciales y espera a que pase la prueba de la clave.",
@@ -15923,6 +16015,65 @@ export const DICIONARIO: Traducoes = {
   "é maior que": { es: "es mayor que" },
   "Escondido, o campo não aparece no formulário nem é validado como obrigatório, e o valor já gravado continua no registro.": {
     es: "Oculto, el campo no aparece en el formulario ni se valida como obligatorio, y el valor ya guardado sigue en el registro.",
+  },
+  // ─── Alarme de SLA ao encarregado (lib/lgpd/sla-alarm.ts, issue #2347) ─────
+  // O e-mail fala a LÍNGUA de quem recebe, que vem do PAÍS (`PerfilDoPais.idioma`):
+  // Portugal fala `pt-PT` e cai no português daqui. A LEI continua vindo do país,
+  // e é por isso que os rodapés do Brasil ("Base legal: LGPD …") não estão nesta
+  // lista — só saem no Brasil, sempre em português.
+  "[Pedido de titular]": {
+    es: "[Solicitud del interesado]",
+  },
+  "[Apagamento da loja]": {
+    es: "[Eliminación de la tienda]",
+  },
+  "Solicitação {id} próxima do vencimento": {
+    es: "Solicitud {id} próxima al vencimiento",
+  },
+  "Alerta de SLA — Solicitação {id}": {
+    es: "Alerta de SLA — Solicitud {id}",
+  },
+  "Olá,": {
+    es: "Hola,",
+  },
+  "A solicitação {id} de {org} atingiu o limiar {limiar}.": {
+    es: "La solicitud {id} de {org} alcanzó el umbral {limiar}.",
+  },
+  "D+5 (acesso a dados)": {
+    es: "D+5 (acceso a datos)",
+  },
+  "D+10 (anonimização/exclusão)": {
+    es: "D+10 (anonimización/supresión)",
+  },
+  "Esta solicitação está {n} dia(s) em atraso.": {
+    es: "Esta solicitud lleva {n} día(s) de retraso.",
+  },
+  "O prazo vence em {data}.": {
+    es: "El plazo vence el {data}.",
+  },
+  "Prazo: {data}.": {
+    es: "Plazo: {data}.",
+  },
+  "Status atual:": {
+    es: "Estado actual:",
+  },
+  "Ver solicitação no painel": {
+    es: "Ver solicitud en el panel",
+  },
+  "Acesse:": {
+    es: "Acceda:",
+  },
+  "Prazo interno do sistema.": {
+    es: "Plazo interno del sistema.",
+  },
+  "Prazo interno do sistema, mais curto que o prazo legal (RGPD: um mês, art. 12.º, n.º 3).": {
+    es: "Plazo interno del sistema, más corto que el plazo legal (RGPD: un mes, art. 12.º, n.º 3).",
+  },
+  "Prazo interno do sistema, mais curto que o prazo legal.": {
+    es: "Plazo interno del sistema, más corto que el plazo legal.",
+  },
+  "O prazo do art. 12.º, n.º 3 do RGPD (um mês) venceu.": {
+    es: "El plazo del art. 12.º, n.º 3 del RGPD (un mes) venció.",
   },
   // #2813 — o painel "Iniciar conversa" do Inbox.
   "Nova conversa": { es: "Nueva conversación" },

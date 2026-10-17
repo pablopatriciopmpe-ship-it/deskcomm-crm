@@ -68,7 +68,7 @@
       "lane": "ui",
       "col": 4,
       "type": "service",
-      "label": "Fora da carteira: 403 e nenhuma transferência anunciada"
+      "label": "Fora da carteira: responde como inexistente (404) e nenhuma transferência anunciada"
     }
   ],
   "edges": [

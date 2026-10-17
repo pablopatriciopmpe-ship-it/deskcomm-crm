@@ -8,6 +8,151 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.84.0] — 2026-10-16
+
+### ⚠️ Requer atenção
+
+- **Com a cobrança ligada e planos oferecidos, defina um plano padrão — sem ele o cadastro pelo Google some e o cadastro sem plano é recusado** Vale para quem tem a cobrança ligada, oferece planos aos clientes e não tem nenhum marcado como **Plano do cadastro** (o padrão). Depois da atualização, nessa situação:
+
+  - o "Entrar com Google" some da tela de cadastro;
+  - o cadastro sem plano escolhido é recusado. Quem entra pela primeira vez com o Google pela tela de login, ou se cadastrou antes da atualização, escolhe o plano na tela seguinte ("Configure sua organização");
+  - a integração que cria empresas por `POST /api/v1/tenants/provision` recebe `409 plano_obrigatorio`.
+
+  Com um padrão de 0 dias de teste grátis, a empresa criada pela integração também nasce suspensa até o primeiro pagamento.
+
+  Para evitar, escolha o plano padrão em Painel › Cobrança › Planos, no botão **Usar no cadastro** (o plano marcado passa a mostrar "Plano do cadastro"); a aba Planos avisa enquanto falta. Com o padrão definido, o Google volta, a integração volta a criar empresas e a empresa que entra sem escolher nasce no padrão.
+
+  Contribuição de @omayklourenco (#2846).
+
+### Adicionado
+
+- **A tela de Contatos aceita seleção múltipla e executa ações em lote por uma rota só** Adicionar ou remover etiqueta, mudar o responsável (carteira) e preencher um campo personalizado eram gestos de um contato por vez. Agora a tabela de contatos tem caixa de seleção em cada linha e uma barra de ações que só aparece quando há algo marcado. As três ações saem por UMA rota, `POST /api/v1/contacts/bulk`, que recebe `ids[]` e a ação escolhida. O lote não tem permissão própria, organização própria nem auditoria própria: cada id é encaminhado ao MESMO caminho do contato individual — etiqueta e campo pelo PATCH da ficha, responsável pela porta única da carteira (`fn_definir_carteira_do_cliente`) —, mesma organização lida da sessão (nunca do corpo da requisição) e uma entrada de auditoria por contato. Aceita até 100 contatos por chamada (`bulk_too_large`, 422, com o teto na mensagem); acima disso a chamada recusa inteira antes de qualquer escrita. A resposta traz o resultado de cada item — feito, recusado e o porquê —, e uma recusa não derruba as demais: contato de outra organização ou inexistente é recusado NO ITEM, com o `not_found` do próprio caminho individual, e as outras seguem. Quem só lê não vê a barra. "Mover cards de etapa" e "marcar sempre humano" ficaram fora desta fatia por medição: a primeira é endereçada por negócio (`/leads/[id]/move`), não por contato, e a segunda só é gravada pelo motor de atendimento — não existe porta individual. Nenhuma mudança de banco.
+
+  Contribuição de @webtecnica (refs #2484).
+
+- **A lista de instalações do admin pode ser baixada em CSV, sem levar o que a anonimização apagou** Quem opera a plataforma não tinha como tirar o inventário das instalações que administra — faturamento, atendimento, revenda, e o pedido do titular que pergunta "quais instâncias minhas existem e desde quando". A lista já existia na tela; não saía daqui. Agora `GET /api/v1/admin/tenants/export` devolve as mesmas 11 colunas da listagem em CSV, com o mesmo guard `requirePlatformAdmin`, o mesmo `querySchema` e o MESMO leitor de dados (`app/api/v1/admin/tenants/_lista.ts`, de onde a rota de listagem também passou a ler): `?q=` e `?status=` viajam inteiros, e o arquivo devolve exatamente os `id`s que a tela devolveria com a mesma query. Envelope igual ao export de auditoria — BOM UTF-8, escape RFC 4180 e `Content-Disposition` datado.
+
+  O centro da issue é o corte: um tenant `status=redacted` sai sem `display_name`, `legal_name` nem `cnpj` originais. O worker de LGPD que anonimiza uma organização só vira o `status` — a tabela guarda os valores de antes —, então a regra mora em `_csv.ts` e vem de `lib/lgpd/cascata.ts`: o texto de identidade sai como `NOTA_REDIGIDA`, o que a anonimização já redigiu passa intacto (a regra é idempotente, como a cascata) e `cnpj` sai vazio, porque documento não tem forma redigida. `id` e `slug` ficam: sem eles o arquivo não é inventário nenhum.
+
+  Sai até 10.000 linhas (o teto do export de auditoria); passou disso, o corte acontece e o header `X-Export-Truncado: true` diz. Grava `platform.tenants_exported` na auditoria com total, se cortou e quais filtros valiam — nunca o texto da busca. `?formato` desconhecido é 422. Nenhuma mudança de banco.
+
+  Contribuição de @webtecnica (#2777).
+
+- **O agente de IA passa a saber de qual anúncio o contato veio** Quem clica num anúncio de "Click-to-WhatsApp" costuma mandar só o texto-padrão do botão ("Quais são as datas de saída disponíveis?"), e o agente respondia como a um cliente qualquer, perguntando o que o anúncio já dizia. Agora, no primeiro atendimento, o agente recebe o título e o texto do anúncio que o contato clicou (quando a atribuição foi gravada no contato, nos últimos 14 dias) e responde já nesse contexto. O anúncio serve só para identificar a campanha: datas, horários e preços continuam vindo da memória da empresa, e o agente é instruído a não resumi-los por conta própria. Contato que não veio de anúncio não muda nada, e não gasta token. Você não precisa fazer nada.
+
+  Contribuição de @wellpelomundo.
+
+- **O Inbox ganha o filtro por atendente, para gerentes e administradores** Quem gerencia a equipe agora escolhe, ao lado do filtro de etiquetas no Inbox, o atendente cujas conversas quer ver; as demais abas mostram a contagem só dele (Minhas segue contando as suas). O seletor aparece apenas para gerente ou acima e some na aba Minhas, que já é só do próprio usuário. O atendente comum continua vendo apenas o que a visibilidade da organização permite. Você não precisa fazer nada.
+
+  Contribuição de @wellpelomundo.
+
+- **Levar o negócio para outro funil sem sair da conversa** No painel lateral da conversa, o negócio ativo de "Leads recentes" ganha a ação "Levar para outro funil", ao lado de "Etapa do funil". Antes, mudar de funil exigia sair da conversa, abrir o quadro, achar o card e usar a ação lá. Agora o operador escolhe o funil de destino ali mesmo, no diálogo que já existe no quadro, e a lista traz só funis de destino válidos — o funil atual fica de fora. A ação respeita a mesma permissão de mover cartão: quem não pode mover não vê a ação. Ao confirmar, o sistema cria o negócio no funil de destino na primeira etapa aberta e encerra o de origem com o motivo canônico; o painel recarrega, passa a mostrar o negócio NOVO como o ativo e a origem aparece encerrada. O erro da transferência sai como aviso, com o mesmo texto do quadro.
+
+  Contribuição de @webtecnica (refs #2874).
+
+- **APIs de roteadores de IA agora aceitam tokens de integração** As APIs de roteadores de IA agora aceitam, além da sessão da tela, tokens `dsk_`.
+  Listar, ler, criar, alterar, apagar, trocar os membros e testar um roteador por
+  token exige um token NOVO, criado em Configurações › API Tokens com a permissão
+  de ler (`config:read`) ou de configurar (`config:write`) a IA e com "Tratar o
+  token como administrador" — a mesma regra que já vale para configurar o agente
+  de IA. Os tokens que já existem não mudam e não ganham acesso aos roteadores.
+  Pela tela, os papéis exigidos continuam os mesmos.
+
+  Contribuição de @vanksestevao (#2824).
+
+- **Responder no WhatsApp (conexão por QR) marca a conversa como lida — o cliente vê o visto azul** Quando uma resposta sai pela conexão por QR (agente, atendente, campanha, follow-up ou aviso de escalação), o CRM agora marca a conversa como lida logo depois do envio, e a mensagem que o cliente mandou ganha o visto azul no celular dele. Antes, a resposta chegava e a mensagem do cliente ficava só como entregue, o que soava como "me respondeu sem ler". Se marcar como lida falhar, a resposta já saiu e não é afetada; a falha fica registrada no log. Ainda não há opção para desligar o visto por conexão (vem numa próxima versão), e a conexão pela API oficial da Meta não muda. Nada a fazer na atualização.
+
+  Contribuição de @webtecnica (#2987), a partir da issue #2981 de @ZvisionAutomations.
+
+- **Fonte de webhook pode atualizar o card quando a integração reenvia o mesmo cadastro com dado novo** Em Webhooks, cada fonte ganhou a opção "Atualizar o card quando o envio repete o mesmo cadastro". Com ela ligada, um envio com o mesmo `external_id` de um card já criado por essa fonte atualiza o card em vez de ser ignorado: os campos novos entram, o nome do card acompanha o nome enviado (no Respondi, só os campos), e o campo reservado `stage` move o card para a etapa pedida. Em "Leads recebidos", esse envio aparece como "Card atualizado". A opção nasce desligada e só liga em fonte com segredo de assinatura configurado. Ela não alcança card criado por outra fonte, card sem origem registrada nem card de contato anonimizado. Com a opção desligada, nada muda: o envio repetido continua sendo reenvio. Nada a fazer na atualização.
+
+  Contribuição de @webtecnica (#2811), a partir da issue #2316 de @aleflores35.
+
+### Alterado
+
+- **Com a cobrança ligada e planos oferecidos, defina um plano padrão — sem ele o cadastro pelo Google some e o cadastro sem plano é recusado** Com a cobrança dos seus clientes ligada, toda empresa nova passa a nascer com plano. Na tela de cadastro, quem cria a conta escolhe um dos planos oferecidos (a lista já vem marcada no plano padrão); quem entra sem escolher — pelo Google ou pela integração — fica no plano padrão. Um plano com 0 dias de teste grátis cobra a entrada: a empresa nasce suspensa e o acesso abre quando o provedor confirma o primeiro pagamento (minutos no Pix e no cartão, até um dia útil no boleto). O prazo de tolerância da renovação não abre esse primeiro acesso.
+
+  Se você não tem plano nenhum oferecido aos clientes nem marcado como plano do cadastro, nada muda: a empresa nova nasce isenta e o "Entrar com Google" continua no cadastro.
+
+  Mudou também a troca de plano. A empresa que sobe de plano no meio do período pago recebe a cobrança da diferença proporcional aos dias que faltam. O plano novo e os limites dele só valem depois desse pagamento, e a data da renovação continua a mesma. Essa cobrança vale até o fim do período: não paga até lá, ela é cancelada; diferença abaixo de R$ 5,00 não é cobrada, e a troca fica para a renovação. Escolher outro plano enquanto a diferença espera pagamento cancela a cobrança; assinar de novo depois de cancelar a assinatura também a cancela, antes de abrir o pagamento do plano. Quem desce de plano continua no plano atual até a renovação, e a próxima fatura já sai com o preço novo, sem crédito proporcional. A troca que você faz pelo painel da empresa continua agendada para a renovação, sem cobrar diferença. A tela de cobrança compara preço, pessoas, números conectados e uso de IA antes da troca.
+
+  O e-mail que fica gravado no provedor de pagamento quando a empresa clica em Assinar passa a ser o do administrador dela, como já era no link que você gera pelo painel — nunca o seu, mesmo quando você entra como administrador provisório da empresa que criou.
+
+### Corrigido
+
+- **Sincronização da agenda do Google conclui páginas grandes sem lotar o cache** A sincronização da agenda do Google agora retoma páginas pendentes a cada minuto,
+  aplica cada página em lote e mantém no cache somente eventos dentro da janela de
+  cobertura. Isso evita que séries recorrentes com ocorrências distantes atrasem a
+  leitura dos próximos dias e permite que esses eventos bloqueiem horários no CRM.
+  O aviso de cobertura considera apenas os horários futuros do período visível,
+  sem alertar por dias passados que a sincronização não precisa cobrir.
+
+- **Um agente pausado não cala mais o número quando há outro agente no ar nele** Com mais de um agente publicado no mesmo número, o atendimento escolhia o de maior prioridade sem olhar se ele estava pausado. Se o escolhido estivesse pausado, a mensagem do cliente ficava sem resposta, mesmo havendo outro agente ativo publicado no mesmo número. O contorno era mexer na prioridade à mão.
+
+  Agora quem está no ar vem sempre antes de qualquer agente pausado, e a prioridade só desempata entre agentes no mesmo estado. Quando todos os agentes do número estão pausados, o número continua sem resposta automática, como antes. Nada muda na configuração.
+
+- **Em Portugal, o alarme de prazo ao encarregado avisa quando o mês legal venceu** O alarme de SLA enviado ao encarregado de uma organização de Portugal passa a ser marcado com o idioma do país (`pt-PT`). O texto do e-mail continua o mesmo. Passado um mês de calendário desde o pedido (art. 12.º, n.º 3 do RGPD), o rodapé deixa de dizer que o prazo interno é mais curto que o legal e passa a afirmar que o prazo venceu. Ao trocar o país em Configurações › Organização, a tela sugere o fuso horário do país (Portugal: Lisboa), e ele pode ser trocado. A sugestão só acontece na troca: uma organização que já estava em Portugal fica com o fuso gravado. Se ele ainda for o de São Paulo, troque em "Fuso horário", na mesma tela. No Brasil, o alarme continua igual.
+
+  Contribuição de @webtecnica (#2836).
+
+- **Mensagem de automação com {{nome}} passa a usar o nome do perfil do WhatsApp quando o contato não tem nome cadastrado** Quem escreve pelo WhatsApp entra no CRM com o nome do perfil (o que aparece na tela do contato) e sem nome cadastrado. As automações só liam o nome cadastrado, então uma regra como "Olá {{nome}}, ..." disparada por **Novo lead** saía "Olá , ..." justamente no primeiro contato — o caso mais comum.
+
+  Agora `{{nome}}` e `{{primeiro_nome}}` seguem a mesma regra de nome da tela do contato: primeiro o nome cadastrado, depois o do perfil do WhatsApp, nunca um identificador técnico. Contato sem nome nenhum continua saindo com a variável vazia, como antes. Nada muda na configuração.
+
+- **Conversa arquivada não vira pendência no Radar depois da atualização** A atualização deixa de criar uma demanda aberta a partir de conversa arquivada que nunca teve demanda. Antes, essa conversa aparecia na lista de pendências do Radar depois de atualizar, embora arquivar seja operação normal do atendimento. Conversas, mensagens e demandas que já existiam ficam como estão, e uma mensagem nova numa conversa arquivada continua reabrindo o atendimento normalmente. Pendências desse tipo criadas por atualizações anteriores não são removidas por esta versão.
+
+  Contribuição de @webtecnica (#2825), a partir do relato de @vagnerrm122 (#2822).
+
+- **Os CSVs de auditoria e de empresas abrem como texto em qualquer planilha** O CSV de empresas (Administração) já punha uma aspa simples na frente da célula que começa com `=`, `+`, `-`, `@`, TAB ou CR. É isso que faz a planilha mostrar o conteúdo como texto, e não como fórmula. A regra agora vale também para cada trecho que começa depois de `;`, `,` ou de uma quebra de linha, porque é por esses caracteres que planilhas como o Excel em português dividem as colunas. O CSV de auditoria, que não tinha regra nenhuma, passa a usar a mesma. Número puro continua sem aspa, como o telefone com `+55` e os números dentro do JSON da coluna `metadata`. Nada muda na tela nem no banco.
+
+- **Mensagem que chega junto da passagem para humano não derruba mais a trava do contato** Quando uma mensagem chegava no mesmo instante em que o contato era passado para humano (ou pedia para sair da lista), o banco podia derrubar uma das duas operações por travamento mútuo — e, se a derrubada fosse a passagem para humano, a trava não era gravada e o agente podia seguir respondendo. Agora as duas seguem a mesma ordem: uma espera a outra e as duas terminam. A atualização aplica a mudança de banco sozinha.
+
+  Contribuição de @webtecnica (#2969), a partir da issue #2884.
+
+- **A aba Atividade mostra o motivo da falha de uma ação de automação em vez de "[object Object]"** Quando uma ação de automação falhava com um erro do banco, a aba Atividade mostrava "[object Object]" em vez do motivo: o erro do banco não chega como `Error`, e a ação gravava a conversão literal do objeto. Agora a ação grava a mensagem e o código do erro, nas ações de enviar WhatsApp, enviar mensagem por IA, decidir por IA, criar ou mover lead e chamar webhook. A mensagem sai inteira; a ação não corta mais as instruções dos erros de configuração da IA. Um erro sem mensagem mostra só os nomes dos seus campos, nunca os valores.
+
+  Contribuição de @webtecnica (closes #2980).
+
+- **A lista do inbox carrega numa busca só — a Fila não pedia a mesma lista duas vezes** Ao abrir o inbox, a aba Fila pedia a mesma lista duas vezes e jogava a primeira resposta fora. Quando a resposta sobre o atendimento automático chegava depois da lista, a Fila aparecia primeiro sem as conversas que esperavam o robô, e elas só entravam cerca de um segundo depois. Agora a Fila só consulta depois de saber esse fato — sai UMA requisição, com o filtro definitivo — e as outras abas continuam consultando na hora, como antes. A espera aparece como esqueleto de carregamento, nunca como caixa de entrada vazia.
+
+  Você não precisa fazer nada.
+
+  Contribuição de @webtecnica, a partir do PR #2365 de @melgarafael.
+
+- **Negócio em que o vendedor responde não aparece mais como frio no radar de risco** Responder o cliente pelo Inbox ou pelo celular conectado não contava como atividade do negócio. Por isso, um negócio trabalhado todo dia aparecia como parado no radar de risco. Agora a mensagem do vendedor atualiza a última atividade do negócio aberto mais recente do contato. Mensagens da IA, de automação, reações, avisos do sistema e as mensagens do próprio cliente continuam fora da conta. Quando o contato tem dois negócios abertos empatados, nenhum é atualizado, para não escolher o card errado. A atualização aplica a mudança de banco sozinha.
+
+  Contribuição de @webtecnica (#2958), a partir da issue #2953 de @hudson-souza-mkt.
+
+- **A conversa selecionada fica legível no tema escuro** No tema escuro, a conversa selecionada na lista do Inbox ficava com o fundo
+  quase branco, e o nome do contato, em letra clara, sumia. O destaque da
+  selecionada agora acompanha o tema, e a prévia da última mensagem também
+  fica legível nela, inclusive quando a conversa está marcada para ação em
+  lote. Crédito: @jmpo.
+
+- **Sem SMTP, o painel de atualização avisa quem administra, em vez de deixar a descoberta para quem reclama** Numa instalação de servidor único sem SMTP configurado, o único lugar que dizia isso era o log do `update.sh`: o painel de atualização (Configurações → Atualização do sistema) exibia o log e mais nada, e quem administrava a VPS só descobria o problema quando alguém reclamava de não receber a recuperação de senha. O painel passa a mostrar o aviso "Sem SMTP configurado" no topo, em todos os estados da tela — o que não sai e onde se configura (em /admin/email). O aviso lê o SMTP pelo caminho de leitura que já existe (o mesmo que a tela /admin/email usa) e com a régua do "esqueci a senha": host E remetente, banco que respondeu, e só no servidor único. Fora dele o login tem e-mail próprio, e a tela fica calada; com SMTP configurado nada muda e nenhum aviso aparece.
+
+  A tela final do instalador (`install-single-server.sh`) para de mandar rodar o `update.sh` sem motivo: passa a dizer que é ele que leva o SMTP do CRM ao serviço de login — a mesma correção que a saída do `update.sh` recebeu.
+
+  Contribuição de @webtecnica, a partir da issue #2755.
+
+- **Clicar numa etiqueta sugerida abre a escolha de cor antes de gravar** No Inbox, nos editores de etiquetas do contato e da conversa, clicar numa sugestão gravava a etiqueta na hora e sem cor, sem mostrar a paleta. Agora, para quem pode pintar etiquetas (gerente ou acima), o clique abre uma caixa com a prévia e os oito tons, e o tom que a sugestão já tem no vocabulário vem marcado. A etiqueta só é gravada em "Adicionar tag", e "Cancelar" não grava nada. Para o atendente o clique continua gravando direto, como antes, porque a rota que define a cor recusaria o pedido dele. Nenhuma mudança de banco.
+
+  Você não precisa fazer nada.
+
+  Contribuição de @webtecnica (#2798), a partir da issue #2789.
+
+- **O limite de passos do follow-up conta só o que o cliente sente, e a publicação recusa a cadência linear que o motor não conseguiria terminar** O limite de 30 passos de um fluxo de follow-up contava toda caixa do desenho. Por isso uma cadência de 7 toques com uma tag em cada toque era recusada na publicação, embora o cliente recebesse só 7 mensagens. Agora o limite conta o que chega ao cliente: mensagem, pergunta, skill, espera e as esperas por resposta (classificar e casar resposta). Gatilho, condição, repetir, tag, mover, tarefa interna e fim deixam de contar. A cadência de 7 toques com tag por toque passa a publicar.
+
+  O motor tem um limite próprio: ele desiste da inscrição depois de 80 passos. Para o limite novo não deixar publicar um fluxo que morreria no meio, a publicação passa a somar quanto custa no motor a cadência linear a partir do gatilho. Se passa de 80, ela recusa e diz o motivo, em vez de publicar e parar no meio da cadência. O trecho que fica dentro de um ciclo, ou depois dele, ainda não entra nessa soma. Fluxos já publicados não mudam.
+
+  Se a sua integração lê `details.errors[].code` no 422 de `POST /api/v1/ai/followup-flows/{id}/publish`, ela vai passar a ver também `max_engine_steps_exceeded`.
+
+  Contribuição de @webtecnica (closes #2896).
+
+- **Um atendente não assume nem transfere conversa que não pode ver** Assumir ou transferir uma conversa passa a respeitar o mesmo escopo que define quem a enxerga (o modo de visibilidade em Configurações › Atendimento). Um atendente só assume ou repassa conversa que já aparece para ele. Gestores e administradores seguem com visão de toda a operação, e o modo "todos veem tudo" continua valendo onde estiver ligado. Na transferência, a tela mostra uma recusa clara em vez de erro interno. A atualização aplica a mudança de banco sozinha.
+
+  Contribuição de @andersontomazi-ctrl (#2865).
+
 ## [1.83.0] — 2026-10-16
 
 ### ⚠️ Requer atenção
@@ -11943,7 +12088,8 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.83.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.84.0...HEAD
+[1.84.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.83.0...v1.84.0
 [1.83.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.82.0...v1.83.0
 [1.82.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.81.0...v1.82.0
 [1.81.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.80.0...v1.81.0

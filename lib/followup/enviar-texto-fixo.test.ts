@@ -28,6 +28,7 @@ vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: 
 import { enviarTextoFixoPendente } from "./enviar-texto-fixo";
 import { StaleServiceBoundaryError } from "@/lib/atendimento/fronteira";
 import { OrgNaoOperanteError } from "@/lib/organizacao/operante";
+import { CHANNEL_CAPABILITIES, PROVIDERS_DE_MENSAGEM } from "@/lib/channels/capabilities";
 
 const boundary = { organization_id: "org-1", contact_id: "contact-1", conversation_id: "conv-1", service_revision: 1, demanda_id: null, demanda_revision: null };
 const JOB = {
@@ -62,6 +63,10 @@ const CONFIG = {
   },
   /** `ai_agent_versions.followup` da versão publicada — `null` = sem faixa. */
   followup: null as unknown,
+  /** #2734 — `channel_sessions.provider`; `null` = a leitura não acha a sessão (sem régua de 24 h). */
+  provider: null as string | null,
+  /** #2734 — `conversations.last_inbound_at` (ISO), para a janela de 24 h. */
+  ultimoInbound: null as string | null,
 };
 
 function reiniciarConfig() {
@@ -77,6 +82,9 @@ function reiniciarConfig() {
     warmup_daily_caps: null,
   };
   CONFIG.followup = null;
+  CONFIG.provider = null;
+  CONFIG.ultimoInbound = null;
+  delete (JOB.payload as Record<string, unknown>).fixed_media_url;
 }
 
 /** Admin stub: job_queue (select pending / claim / status) + followup_enrollments. */
@@ -104,7 +112,8 @@ function admin(revogado = false, falhaDeLeitura: Error | null = null) {
         if (table === "job_queue" && chain._upd) return Promise.resolve({ data: { id: JOB.id, locked_by:chain._upd.locked_by, locked_at:chain._upd.locked_at }, error: null });
         if (table === "followup_enrollments")
           return Promise.resolve({ data: { current_node_id: "node-1",status:"active",revision:1,agent_id:"ag-1" }, error: null });
-        if (table === "conversations") return Promise.resolve({ data: { channel_session_id: CONFIG.sessao }, error: null });
+        if (table === "conversations") return Promise.resolve({ data: { channel_session_id: CONFIG.sessao, last_inbound_at: CONFIG.ultimoInbound }, error: null });
+        if (table === "channel_sessions") return Promise.resolve({ data: CONFIG.provider ? { provider: CONFIG.provider } : null, error: null });
         if (table === "channel_knobs") return Promise.resolve({ data: CONFIG.knobs, error: null });
         if (table === "organizations") return Promise.resolve({ data: { timezone: CONFIG.fuso }, error: null });
         if (table === "ai_agents") return Promise.resolve({ data: { published_version_id: "v1" }, error: null });
@@ -325,5 +334,88 @@ describe("enviarTextoFixoPendente · janela de disparo (#2658)", () => {
 
     expect(enviados).toBe(1);
     expect(sendMessageHandler).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * #2734 — o passo de texto fixo com MÍDIA, no atalho inline. Este é um dos dois
+ * caminhos que mandam o texto fixo do follow-up (o outro é `runFlowDrivenTurn`,
+ * em `tests/unit/fluxo-envia-modelo-aprovado.test.ts`), e a mídia tem de valer
+ * nos dois: sair como imagem com o texto de legenda, ser recusada quando não é
+ * imagem nem PDF e, em canal com janela de 24 h fechada, não sair — nem a mídia,
+ * nem o texto sozinho. A recusa VOLTA para o enrollment como `skipped`, como no
+ * worker; fechar só o job deixava o nó em recheck até o dead-man.
+ *
+ * Sabotagem prevista: apagar o bloco `if (midia) { recusaDeMidiaForaDaJanela … }`
+ * de `enviar-texto-fixo.ts` deixa vermelho o caso da janela fechada (o envio sai);
+ * apagar o `completeTurnForEnrollment` das recusas deixa vermelhos os dois casos
+ * de recusa.
+ */
+describe("enviarTextoFixoPendente · mídia com legenda (#2734)", () => {
+  const HORA = 3_600_000;
+  // Um canal que só aceita mensagem livre dentro da janela de 24 h, pela CAPACIDADE, não pelo nome.
+  const CANAL_COM_JANELA = PROVIDERS_DE_MENSAGEM.find((p) => !CHANNEL_CAPABILITIES[p].freeformOutsideWindow)!;
+  const comMidia = (url: string) => {
+    (JOB.payload as Record<string, unknown>).fixed_media_url = url;
+  };
+
+  it("imagem: sai como `image`, com a URL, o MIME e o texto como LEGENDA", async () => {
+    decidir.mockResolvedValue({ permite: true });
+    comMidia("https://cdn.exemplo.com/oferta.png");
+
+    expect(await enviarTextoFixoPendente(admin())).toBe(1);
+    expect(sendMessageHandler).toHaveBeenCalledOnce();
+    expect(sendMessageHandler.mock.calls[0]![2]).toMatchObject({
+      conversation_id: "conv-1",
+      type: "image",
+      body: "Oi, tudo bem?",
+      media_url: "https://cdn.exemplo.com/oferta.png",
+      media_mime: "image/png",
+    });
+  });
+
+  it(".docx: recusado com o motivo, nada sai, e o passo volta como `skipped`", async () => {
+    decidir.mockResolvedValue({ permite: true });
+    comMidia("https://cdn.exemplo.com/contrato.docx");
+
+    expect(await enviarTextoFixoPendente(admin())).toBe(0);
+    expect(sendMessageHandler).not.toHaveBeenCalled();
+    const settle = settleCalls.at(-1)!;
+    expect(settle.p_done).toBe(true);
+    expect(String(settle.p_error)).toContain("imagem");
+    expect(completeTurnForEnrollment.mock.calls[0]![4]).toEqual({ kind: "skipped", reason: settle.p_error });
+  });
+
+  it("canal oficial com a janela de 24 h FECHADA: nem a mídia nem o texto saem", async () => {
+    decidir.mockResolvedValue({ permite: true });
+    CONFIG.provider = CANAL_COM_JANELA;
+    CONFIG.ultimoInbound = new Date(Date.now() - 30 * HORA).toISOString();
+    comMidia("https://cdn.exemplo.com/oferta.png");
+
+    expect(await enviarTextoFixoPendente(admin())).toBe(0);
+    expect(sendMessageHandler).not.toHaveBeenCalled();
+    const settle = settleCalls.at(-1)!;
+    expect(settle.p_done).toBe(true);
+    expect(String(settle.p_error)).toContain("janela de 24 horas");
+    expect(completeTurnForEnrollment.mock.calls[0]![4]).toEqual({ kind: "skipped", reason: settle.p_error });
+  });
+
+  it("controle: o mesmo canal com a janela ABERTA manda a imagem", async () => {
+    decidir.mockResolvedValue({ permite: true });
+    CONFIG.provider = CANAL_COM_JANELA;
+    CONFIG.ultimoInbound = new Date(Date.now() - 2 * HORA).toISOString();
+    comMidia("https://cdn.exemplo.com/oferta.png");
+
+    expect(await enviarTextoFixoPendente(admin())).toBe(1);
+    expect(sendMessageHandler.mock.calls[0]![2]).toMatchObject({ type: "image" });
+  });
+
+  it("controle: sem mídia, a janela fechada não muda nada — o texto sai como sempre saiu", async () => {
+    decidir.mockResolvedValue({ permite: true });
+    CONFIG.provider = CANAL_COM_JANELA;
+    CONFIG.ultimoInbound = new Date(Date.now() - 30 * HORA).toISOString();
+
+    expect(await enviarTextoFixoPendente(admin())).toBe(1);
+    expect(sendMessageHandler.mock.calls[0]![2]).toMatchObject({ type: "text", body: "Oi, tudo bem?" });
   });
 });

@@ -29,6 +29,7 @@ import { ConversationTagsEditor } from "./ConversationTagsEditor";
 import { ContactTagsEditor } from "./ContactTagsEditor";
 import { TarefasDaDemanda } from "./TarefasDaDemanda";
 import { useDefaultPipeline } from "@/hooks/pipelines/useDefaultPipeline";
+import { LoseLeadDialog } from "@/components/kanban/LoseLeadDialog";
 import { NewLeadDialog } from "@/components/kanban/NewLeadDialog";
 import { MoveToOtherPipelineDialog } from "@/components/kanban/MoveToOtherPipelineDialog";
 import { CustomFieldsEditor, type CustomFieldDef } from "@/components/contacts/CustomFieldsEditor";
@@ -59,6 +60,7 @@ interface LeadRow {
   stage_id?: string;
   /** As etapas ativas do funil, na ordem do quadro (rota crm-summary). */
   etapas_do_funil?: Array<{ id: string; name: string; is_won: boolean; is_lost: boolean }>;
+  motivos_de_perda?: string[];
 }
 
 interface OrderRow {
@@ -435,17 +437,23 @@ function InboxLeadEditor({
  *
  * Usa o MESMO caminho do "Mover para…" do quadro (`/api/v1/leads/bulk`, que
  * posiciona o card no banco e emite atividade, evento e auditoria), então a
- * etapa que avisa na Central avisa igual. Etapa de PERDA fica de fora: ela pede
- * o motivo, e esse diálogo mora no quadro.
+ * etapa que avisa na Central avisa igual. A etapa de PERDA aparece também, mas
+ * não move direto: ela pede o motivo, então abre o mesmo `LoseLeadDialog` do
+ * quadro (issue #2871).
  */
 function EtapaDoNegocio({ lead, onMovido }: { lead: LeadRow; onMovido: () => void }) {
   const t = useT();
   const mover = useBulkAction(lead.pipeline_id);
-  const etapas = (lead.etapas_do_funil ?? []).filter((e) => !e.is_lost || e.id === lead.stage_id);
+  const [perdendo, setPerdendo] = useState(false);
+  const etapas = lead.etapas_do_funil ?? [];
   if (!lead.stage_id || etapas.length === 0) return null;
 
   async function escolher(stageId: string) {
     if (stageId === lead.stage_id) return;
+    if (etapas.find((e) => e.id === stageId)?.is_lost) {
+      setPerdendo(true);
+      return;
+    }
     try {
       await mover.mutateAsync({ action: "move", lead_ids: [lead.id], params: { stage_id: stageId } });
       toast.success(t("Etapa atualizada."));
@@ -472,6 +480,14 @@ function EtapaDoNegocio({ lead, onMovido }: { lead: LeadRow; onMovido: () => voi
           ))}
         </SelectContent>
       </Select>
+      <LoseLeadDialog
+        open={perdendo}
+        onOpenChange={setPerdendo}
+        leadId={lead.id}
+        pipelineId={lead.pipeline_id}
+        onPerdido={onMovido}
+        motivos={lead.motivos_de_perda}
+      />
     </div>
   );
 }

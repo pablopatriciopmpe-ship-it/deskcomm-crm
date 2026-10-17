@@ -132,7 +132,15 @@ export function ConversationList({
   // responde) herda a lista anterior pelo `placeholderData` do hook — só essa
   // troca: aba ou busca nova é outra lista, e volta ao skeleton. `items.length === 0` declara a regra em palavras — o preço de
   // reconstruí-la aqui é o defeito inteiro desta issue.
-  if (q.isLoading && items.length === 0) {
+  //
+  // `isPending`, e não `isLoading` (#2365): a consulta SEGURADA da Fila — a que
+  // espera o fato org-wide antes de sair, para não pedir a mesma lista duas
+  // vezes — está pendente SEM estar buscando, e `isLoading` seria falso ali. A
+  // diferença não é cosmética: com `isLoading`, a espera de ~200ms do fato
+  // caía no vazio por AUSÊNCIA e a tela dizia "Sem conversas por aqui" — caixa
+  // vazia em vez de "está vindo". `isPending` continua falso no refetch (há
+  // dado), então a regra do #2366 segue de pé: sem dado é primeira carga.
+  if (q.isPending && items.length === 0) {
     return (
       <div className="space-y-3 p-3">
         {[1, 2, 3, 4, 5].map((i) => (
@@ -214,7 +222,7 @@ export function ConversationList({
               title={t("Selecionar todas")}
               data-testid="selecionar-todas-visiveis"
               onClick={onSelecionarTodosVisiveis}
-              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-input bg-background transition-colors hover:bg-surface-elevated focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-muted-foreground bg-background transition-colors hover:bg-surface-elevated focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
             >
               {selecionados && items.every((c) => selecionados.has(c.id)) && (
                 <Check size={12} weight="bold" aria-hidden />

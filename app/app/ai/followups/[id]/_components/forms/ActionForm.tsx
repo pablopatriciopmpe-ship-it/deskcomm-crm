@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -132,18 +133,28 @@ export function ActionForm({
     config.mode === "ai_message" ? (config.fallback_template_id ?? "") : "",
   );
   const [templateId, setTemplateId] = useState(config.mode === "template" ? config.template_id : "");
+  // #2734 — mídia OPCIONAL do passo: com uma imagem ou PDF, o texto acima vira a
+  // LEGENDA. O upload pela tela ainda não existe nesta fatia — o campo é a URL.
+  const [mediaUrl, setMediaUrl] = useState(
+    config.mode === "text" ? (config.media_url ?? "") : "",
+  );
   const [error, setError] = useState<string | null>(null);
 
   const commit = (next: {
     mode: ModoDaAcao;
     body: string;
+    mediaUrl: string;
     promptHint: string;
     fallbackTemplateId: string;
     templateId: string;
   }) => {
     const candidate =
       next.mode === "text"
-        ? { mode: "text" as const, body: next.body }
+        ? {
+            mode: "text" as const,
+            body: next.body,
+            ...(next.mediaUrl.trim() ? { media_url: next.mediaUrl.trim() } : {}),
+          }
         : next.mode === "ai_message"
           ? {
               mode: "ai_message" as const,
@@ -160,7 +171,7 @@ export function ActionForm({
     onChange(parsed.data);
   };
 
-  const fields = { body, promptHint, fallbackTemplateId, templateId };
+  const fields = { body, mediaUrl, promptHint, fallbackTemplateId, templateId };
 
   return (
     <div className="space-y-3">
@@ -202,6 +213,23 @@ export function ActionForm({
           <p className="text-xs text-text-muted">
             {t("Sai exatamente assim, sem IA. No laço,")} {t("{{volta}}")} {t("e")} {t("{{voltas}}")} {t("viram o número da volta.")}
           </p>
+          <div className="space-y-2">
+            <Label htmlFor="action-media-url">{t("Imagem ou PDF (opcional)")}</Label>
+            <Input
+              id="action-media-url"
+              type="url"
+              maxLength={2000}
+              value={mediaUrl}
+              placeholder="https://…/oferta.pdf"
+              onChange={(e) => {
+                setMediaUrl(e.target.value);
+                commit({ mode, ...fields, mediaUrl: e.target.value });
+              }}
+            />
+            <p className="text-xs text-text-muted">
+              {t("Com uma imagem ou PDF, o texto acima vira a legenda do arquivo. Outros tipos de arquivo são recusados. Depois de 24 horas sem resposta do cliente, a mídia não sai — só um modelo aprovado chega até ele.")}
+            </p>
+          </div>
         </div>
       ) : mode === "ai_message" ? (
         <>

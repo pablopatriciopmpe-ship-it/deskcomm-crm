@@ -444,13 +444,22 @@ services:
       ACME_EMAIL: ${ACME_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Ponto de extensão (#2724): arquivos .caddy soltos nesta pasta local são
+      # importados pelo fim do Caddyfile, e a pasta não é versionada — publicar
+      # outro serviço no mesmo VPS não mexe em arquivo nenhum do repositório,
+      # então nada trava o update.sh. Somente-leitura: o contêiner não escreve
+      # em configuração que o operador mantém no host.
+      - ./caddy-sites:/etc/caddy/sites:ro
       - caddy-data:/data           # certificados Let's Encrypt (persistir!)
       - caddy-config:/config
     depends_on:
       app:
         condition: service_healthy
     logging: *default-logging
-    networks: [internal]
+    # `caddy-sites` (#2724): rede só entre o Caddy e os serviços extras que o
+    # operador publica por caddy-sites/. O serviço de terceiro entra nela, e
+    # não na `internal`, para não alcançar os serviços internos do CRM.
+    networks: [internal, caddy-sites]
 
 volumes:
   waha-data:
@@ -463,4 +472,6 @@ volumes:
 
 networks:
   internal:
+    driver: bridge
+  caddy-sites:
     driver: bridge

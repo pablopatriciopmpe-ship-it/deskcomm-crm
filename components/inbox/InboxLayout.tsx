@@ -261,7 +261,7 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
    * e completa quando a resposta chega; a janela é de ~200ms e o rótulo nunca
    * discorda do filtro, porque os dois usam a mesma convenção.
    */
-  const { data: automaticoDaOrg } = useAutomaticoAtivo();
+  const { data: automaticoDaOrg, isLoading: automaticoCarregando } = useAutomaticoAtivo();
   const composerRef = useRef<ComposerHandle | null>(null);
 
   const filters: ConversationsFilters = useMemo(
@@ -297,9 +297,33 @@ export function InboxLayout({ initialSelectedId = null, rascunho = null }: Inbox
   );
 
 
+  /**
+   * A FILA ESPERA O FATO DA ORG — E CONSULTA UMA VEZ SÓ (#2365).
+   *
+   * Só a aba Fila depende do fato org-wide: `comandosDaFila` devolve
+   * `aguardando,automatico` numa org SEM automático (sem robô, essas conversas
+   * também esperam gente) e `aguardando` numa org com. Enquanto o fato não
+   * chegou, `undefined` vale "assume que há" — e era essa suposição que saía
+   * como PRIMEIRA busca da lista: com o automático desligado, a resposta trocava
+   * a chave e o react-query abria uma segunda query, DESCARTANDO a primeira
+   * (trace do #2360: `comando=aguardando` 1091ms + `comando=aguardando,automatico`
+   * 896ms, duas voltas de rede pela mesma lista).
+   *
+   * Segurar a Fila até o fato chegar é o preço de UMA requisição: a pergunta já
+   * é feita pela tela de qualquer jeito (o `ConversationList` e o cabeçalho leem
+   * o mesmo hook, deduplicado), e o esqueleto cobre a espera — nunca a caixa
+   * vazia, porque `isPending` também é verdadeiro com a consulta segurada (ver
+   * `ConversationList`). Nas outras abas o filtro não depende do fato e a lista
+   * continua consultando na hora.
+   *
+   * Falha ou permissão ausente não travam a tela: aí `isLoading` é falso, a
+   * consulta sai com a convenção de sempre e nada fica esperando para sempre.
+   */
+  const filaEsperaOFatoDaOrg = filterValue.tab === "unassigned" && automaticoCarregando;
+
   // We need the selected conversation object for header / composer / side panel.
   // Source it from the same query the list uses to avoid an extra request.
-  const listQ = useConversationsRealtime(filters, orgId);
+  const listQ = useConversationsRealtime(filters, orgId, !filaEsperaOFatoDaOrg);
   const inList = useMemo(() => {
     const all = listQ.data?.pages.flatMap((p) => p.data) ?? [];
     return all.find((c) => c.id === selectedId) ?? null;

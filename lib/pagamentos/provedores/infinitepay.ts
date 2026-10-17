@@ -31,7 +31,7 @@
  * 4. **A chave PIX da conta não é verificável pela API.** Sem ela, o link nasce
  *    com HTTP 200, o PIX aparece como opção e só quebra na tela do comprador.
  *    Não há o que checar aqui — quem cobra o carimbo é `pix_conferido_em`
- *    (migration 0683) e a tela que o lê.
+ *    (migration 0689) e a tela que o lê.
  *
  * ─── Por que a conferência pelo recibo é obrigatória ─────────────────────────
  *

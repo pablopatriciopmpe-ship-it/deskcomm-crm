@@ -108,6 +108,12 @@ export interface FollowupJobRequest {
     /** action (mode 'text') — corpo pronto; o turno envia sem chamar o modelo. */
     fixed_body?: string;
     /**
+     * action (mode 'text') — #2734: mídia OPCIONAL (imagem ou PDF) por URL. Presente,
+     * o `fixed_body` vira a LEGENDA. O envio reusa o caminho de mídia do Inbox e das
+     * campanhas (`sendMessageHandler`), nos dois caminhos que mandam o texto fixo.
+     */
+    fixed_media_url?: string;
+    /**
      * action (mode 'template') — id em `message_templates` (texto pronto) OU em
      * `meta_templates` (modelo aprovado do canal, o único que sai com a janela de 24 h
      * fechada). O turno resolve qual dos dois é e envia sem modelo de IA.
@@ -346,7 +352,10 @@ function turnPayloadExtras(
     };
   }
   if (node.type === "action" && node.config.mode === "text") {
-    return { fixed_body: interpolarVolta(node.config.body, events, contexto) };
+    return {
+      fixed_body: interpolarVolta(node.config.body, events, contexto),
+      ...(node.config.media_url ? { fixed_media_url: node.config.media_url } : {}),
+    };
   }
   if (node.type === "action" && node.config.mode === "template") {
     const volta = latestRepeatIndex(events);

@@ -33,6 +33,7 @@ import { type NextRequest } from "next/server";
 
 import { ok, fail } from "@/lib/api/wrappers";
 import { camposDoFunil, settingsDoEmbed } from "@/lib/leads/campos-do-funil";
+import { motivosDoFunil } from "@/lib/leads/motivos-de-perda-do-funil";
 import { createClient } from "@/lib/supabase/server";
 import { nomesDosAtendentes } from "@/lib/users/nome-do-atendente";
 
@@ -196,6 +197,8 @@ function comCamposDoFunil(row: Record<string, unknown>) {
     funil_nome: nomeDoEmbed(crm_pipelines),
     etapa_nome: nomeDoEmbed(crm_stages),
     etapas_do_funil: etapasDoEmbed(crm_pipelines),
+    // O painel da conversa não tem o quadro em cache; sem isto a janela de perda cairia no padrão do produto.
+    motivos_de_perda: motivosDoFunil(settingsDoEmbed(crm_pipelines)),
   };
 }
 

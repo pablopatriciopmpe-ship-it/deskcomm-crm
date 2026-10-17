@@ -384,6 +384,24 @@ describe("célula que a planilha leria como fórmula", () => {
     expect(controle.slice(2, 4)).toEqual(["Loja Comum", "Loja Comum Ltda"]);
     expect(controle[9]).toBe("3");
   });
+
+  it("trecho depois de `;` que começa com fórmula também sai como texto (Excel pt-BR divide por `;`)", async () => {
+    montar([tenant(1, { status: "active", display_name: "Loja;=1+1", legal_name: "A;@x;B" })]);
+
+    const csv = await (await chamarExport()).text();
+    const linha = csvParaMatriz(csv).slice(1)[0] as string[];
+
+    expect(linha.slice(2, 4)).toEqual(["Loja;'=1+1", "A;'@x;B"]);
+  });
+
+  it("trecho depois de quebra de linha ou de vírgula também sai como texto (leitor que não respeita aspas)", async () => {
+    montar([tenant(1, { status: "active", display_name: "Loja\n=1+1", legal_name: "A,@x" })]);
+
+    const csv = await (await chamarExport()).text();
+    const linha = csvParaMatriz(csv).slice(1)[0] as string[];
+
+    expect(linha.slice(2, 4)).toEqual(["Loja\n'=1+1", "A,'@x"]);
+  });
 });
 
 describe("o corte", () => {

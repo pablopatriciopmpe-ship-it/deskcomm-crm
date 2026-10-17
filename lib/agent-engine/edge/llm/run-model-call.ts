@@ -57,6 +57,7 @@ import {
   type ChaveDeOrcamento,
 } from './orcamento';
 import { costCents } from './pricing';
+import { custoDoModeloForaDoMotor } from './pricing-do-catalogo';
 import { chaveDeOrcamentoDaInstalacao } from '../../../instalacao/comportamento';
 import { cobrancaLigadaComMemo } from '../../../instalacao/modulos';
 import { createDefaultRegistry, type ProviderRegistry } from './providers';
@@ -1154,7 +1155,27 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
   // O TTL é o MESMO que gravou o prefixo estável acima: a gravação de cache custa
   // 1.25× a entrada em 5m e 2× em 1h, e supor a doutrina superfaturaria 60% da
   // parcela de cache write em quem usa o knob.
-  const cost = costCents(model, usage, cfg.cacheTtl ?? '1h');
+  //
+  // A tabela estática do motor é a PRIMEIRA verdade. Quando ela não conhece o id
+  // — o caso do provedor PERSONALIZADO, que serve qualquer modelo de qualquer
+  // preço (#3013: 180 chamadas de `openai/gpt-oss-120b` no Groq, custo nulo) —, o
+  // preço da linha sai do catálogo da INSTALAÇÃO (`ai_models`/`ai_pricing`, as
+  // mesmas tabelas que `lib/ai/cost.ts` e `lib/ai/runtime/cost.ts` já consultam).
+  // Sem preço em nenhum dos dois o custo continua `null` — mas com aviso no log,
+  // nunca calado, e nunca um 0 inventado. O caminho dos modelos que já têm linha
+  // na tabela estática não muda uma vírgula: `costCents` segue sendo chamado
+  // primeiro, e só o `null` dele chega aqui.
+  let cost = costCents(model, usage, cfg.cacheTtl ?? '1h');
+  let origemDoCusto: 'catalogo_da_instalacao' | undefined;
+  if (cost === null) {
+    cost = await custoDoModeloForaDoMotor(db, {
+      model,
+      provider: config.provider,
+      usage,
+      log: deps.log,
+    });
+    if (cost !== null) origemDoCusto = 'catalogo_da_instalacao';
+  }
 
   const { rows } = await db.query<{ id: string }>(
     `insert into llm_calls
@@ -1194,6 +1215,11 @@ export async function runModelCall(db: pg.Pool, cfg: LlmEdgeConfig, input: RunMo
     origem_da_escolha: origem,
     ...usage,
     cost_cents: cost,
+    // Só quando o preço NÃO veio da tabela estática do motor: diz de qual caminho
+    // saiu o número gravado, e é o que um operador procura quando pergunta "de
+    // onde saiu este custo?". Modelo sem preço em lugar nenhum não traz o campo —
+    // o `cost_cents: null` acima somado ao aviso de sem-preço é a marca.
+    ...(origemDoCusto !== undefined ? { custo_origem: origemDoCusto } : {}),
     latency_ms: latencyMs,
   });
   for (const aviso of decisao.avisos) {

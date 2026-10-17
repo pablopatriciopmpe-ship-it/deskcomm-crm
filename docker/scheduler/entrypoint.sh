@@ -38,10 +38,11 @@ APP_ORIGIN="http://app:3000"
 # já deixaria o token vencer. É barata: só toca conexão perto de expirar, e
 # rodada vazia não audita.
 #
-# SYNC a cada 15 min, e NÃO na mesma cadência. Os custos são diferentes: renovar
-# é uma requisição por conexão que está vencendo; sincronizar é uma por
-# calendário, sempre. Colar as duas obrigaria a escolher entre renovar raro
-# demais (e a agenda morre) ou sincronizar caro demais (e gasta cota do cliente).
+# SYNC a cada minuto. Uma página incompleta deixa o próximo passo imediatamente
+# elegível no banco; esse cron frequente drena a paginação sem esperar 15 min por
+# página. Calendários sem trabalho continuam espaçados pela própria RPC, que
+# agenda a próxima leitura em 15 min após concluir. A renovação permanece a cada
+# 10 min: ela tem outro custo e outro prazo.
 #
 # ⚠️ E o comentário fica AQUI, fora da string: dentro de CRONS= ele não seria
 # comentário, seria DADO — e crase em prosa dentro de aspas duplas o shell
@@ -73,7 +74,7 @@ CRONS="
 * * * * *|25|api/v1/cron/channel-pause-scheduler
 */10 * * * *|60|api/v1/cron/contact-avatars
 */10 * * * *|60|api/v1/cron/agenda-google-refresh
-*/15 * * * *|90|api/v1/cron/agenda-google-sync
+* * * * *|90|api/v1/cron/agenda-google-sync
 # A IDA. Cadência mais curta que a volta de propósito: quem marcou pela tela
 # espera ver o compromisso no celular dele em minutos, e a ida é barata (só
 # manda o que mudou). A volta é cara — varre calendário inteiro — e por isso

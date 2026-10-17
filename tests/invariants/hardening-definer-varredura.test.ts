@@ -156,8 +156,8 @@ const AUTHENTICATED_PERMITIDO: readonly Excecao[] = [
       "service_role negado, suporte readonly/expirado, MFA e retomada.",
   },
   {
-    fn: "fn_set_channel_routing(uuid,uuid,uuid[],boolean)",
-    razao: "PATCH app/api/v1/settings/routing/channels/route.ts usa createClient da sessão; RPC exige manager, suporte de escrita, MFA e canal/membros da org na mesma transação. tests/invariants/channel-routing.test.ts prova viewer, tenants A/B, membro revogado, policy vazia e MFA platform aal1/aal2.",
+    fn: "fn_set_channel_routing(uuid,uuid,uuid[],boolean,text,uuid)",
+    razao: "PATCH app/api/v1/settings/routing/channels/route.ts usa createClient da sessão; RPC exige manager, suporte de escrita, MFA e canal/membros da org na mesma transação. Os dois últimos parâmetros (#2331) acrescentam o modo do número e o atendente de destino padrão à MESMA escrita dos responsáveis; a assinatura antiga de 4 argumentos foi derrubada na migration 0663, e a de 4 continua atendida pelos DEFAULTs. tests/invariants/channel-routing.test.ts prova viewer, tenants A/B, membro revogado, policy vazia, MFA platform aal1/aal2, modo fora da lista e destino que não é membro recusados sem gravar, e a entrega direta ao destino padrão.",
   },
   {
     fn: "fn_reserve_channel_connection(uuid,uuid,text,text,boolean)",

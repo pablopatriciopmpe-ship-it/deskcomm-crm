@@ -16,6 +16,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { contrasteNoTema, tokenDaClasse } from "@/tests/setup/contraste-do-utilitario";
+
 import { BarraDeAcoesEmLote } from "./BarraDeAcoesEmLote";
 
 vi.mock("@/hooks/inbox/useAssignableMembers", () => ({
@@ -72,6 +74,21 @@ describe("BarraDeAcoesEmLote", () => {
   it("com 1 selecionada, o texto é singular", () => {
     render(<BarraDeAcoesEmLote quantidade={1} pendente={false} {...mao()} />);
     expect(screen.getByText("1 conversa selecionada")).toBeInTheDocument();
+  });
+
+  it("a contagem passa 4.5:1 sobre o fundo da barra nos dois temas", () => {
+    render(<BarraDeAcoesEmLote quantidade={3} pendente={false} {...mao()} />);
+    // Medido na prova do #2990 com `text-text-muted` sobre `bg-surface-elevated`:
+    // 4.44:1 no escuro, em texto de 12px — abaixo dos 4,5:1 da WCAG 1.4.3.
+    const barra = screen.getByTestId("barra-de-acoes-em-lote");
+    const fundo = tokenDaClasse(barra.className, "bg");
+    const frente = tokenDaClasse(screen.getByText("3 conversas selecionadas").className, "text");
+    for (const tema of ["claro", "escuro"] as const) {
+      expect(
+        contrasteNoTema(frente, fundo, tema),
+        `${frente} sobre ${fundo} no ${tema}`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
   it("as ações secundárias saem do Mais ações e delegam", async () => {

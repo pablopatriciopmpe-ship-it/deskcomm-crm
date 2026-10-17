@@ -33,6 +33,7 @@
  * inventário nenhum — é a lista de instalações que a issue pede.
  */
 import type { AdminTenantRow } from "@/hooks/useAdminTenants";
+import { neutralizarFormula } from "@/lib/csv/neutralizar-formula";
 import { NOTA_REDIGIDA, jaRedigida } from "@/lib/lgpd/cascata";
 
 /**
@@ -64,8 +65,7 @@ export const COLUNAS_DO_CSV = [
  */
 function csvEscape(valor: unknown): string {
   if (valor === null || valor === undefined) return "";
-  let texto = typeof valor === "string" ? valor : String(valor);
-  if (typeof valor === "string" && /^[=+\-@\t\r]/.test(texto)) texto = `'${texto}`;
+  const texto = typeof valor === "string" ? neutralizarFormula(valor) : String(valor);
   if (/[",\n\r]/.test(texto)) return `"${texto.replace(/"/g, '""')}"`;
   return texto;
 }

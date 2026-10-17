@@ -268,7 +268,7 @@ export function ConversationListItem({
             "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent",
             selecionado
               ? "border-accent bg-accent text-accent-foreground"
-              : "border-input bg-background hover:bg-surface-elevated",
+              : "border-muted-foreground bg-background hover:bg-surface-elevated",
           )}
         >
           {selecionado && <Check size={12} weight="bold" aria-hidden />}

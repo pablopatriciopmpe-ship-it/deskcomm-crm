@@ -85,7 +85,7 @@ export function ensureHandlersRegistered(): void {
   // A cobrança do revendedor: relê o provedor (rede de terceiro) e só então
   // escreve. Consome um evento só dela, então a posição não atrasa ninguém.
   registerHandler(cobrancaSinalHandler);
-  // A confirmação do pagamento do CLIENTE da organização (0683): confere o
+  // A confirmação do pagamento do CLIENTE da organização (0689): confere o
   // recibo do provedor e, só então, marca pago e entrega.
   registerHandler(confirmarPagamentoHandler);
   // Penúltimo, pelo MESMO critério do último: o aviso ao suporte sai por rede de

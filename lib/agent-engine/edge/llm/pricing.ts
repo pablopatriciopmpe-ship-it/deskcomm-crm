@@ -1,6 +1,8 @@
 /**
  * Tabela de preços versionada (stack.md §2: usage × pricing.ts → llm_calls.cost_cents).
- * ÚNICO lugar com preço de modelo no repo.
+ * ÚNICO lugar com preço de modelo DECLARADO no repo — preço do CATÁLOGO da
+ * instalação (`ai_models`/`ai_pricing`), quando o id não está nesta tabela, é
+ * resolvido por `pricing-do-catalogo.ts` (issue #3013).
  *
  * Fontes: https://platform.claude.com/docs/en/about-claude/pricing (Anthropic) e
  * https://developers.openai.com/api/docs/pricing (OpenAI, tabela Standard, conferida em
@@ -14,6 +16,12 @@
  * Modelo fora da tabela → custo NULL (desconhecido): mais honesto que inventar 0 —
  * o budget soma coalesce(cost_cents, 0), então modelo sem preço não consome teto;
  * quem habilitar um modelo novo para uma org adiciona a linha de preço aqui.
+ *
+ * O `null` daqui NÃO é o fim da linha: o seam (`run-model-call.ts`) tenta o preço
+ * do catálogo da instalação antes de aceitá-lo (`pricing-do-catalogo.ts`), porque
+ * o provedor PERSONALIZADO serve qualquer modelo — e quando nem o catálogo tem o
+ * preço, o nulo é gravado COM aviso no log. Custo nulo por preço desconhecido é
+ * legítimo; custo nulo CALADO foi o defeito da issue #3013.
  *
  * TRÊS armadilhas já pagas, e as três são do MESMO defeito — a tabela ficou na
  * geração 4 enquanto o catálogo (`ai_models`, migration 0101) andou:

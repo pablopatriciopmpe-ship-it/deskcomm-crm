@@ -1333,6 +1333,62 @@ EOF
   printf '%s' "$fora"
 }
 
+# ── O proxy só é recriado com uma configuração que o Caddy aceitou (#2724) ──
+#
+# `caddy-sites/` é do operador. Um arquivo errado ali, um domínio dele que uma
+# versão nossa passou a usar, ou uma imagem nova do Caddy que recusa o que a
+# antiga aceitava: nos três casos o Caddy RECRIADO não sobe, e o CRM sai do ar
+# junto. O Caddy que já está rodando não sente nada, porque leu a configuração
+# ao subir. Então a atualização confere ANTES de recriar, num contêiner
+# descartável com a imagem já puxada, o Caddyfile desta versão e a pasta do
+# operador. Recusou: o proxy antigo fica no ar e a saída diz o motivo.
+#
+# Falha fechada de propósito: se a conferência nem roda, o proxy também não é
+# recriado. Trocar um proxy que funciona por um que ninguém conferiu é a troca
+# que esta guarda existe para recusar. O `</dev/null` impede o `run` de comer
+# o stdin de quem roda o update.sh por pipe. O motivo fica em PROXY_RECUSA
+# (vazio = aprovado).
+conferir_config_do_proxy() {
+  local saida
+  if saida="$(dc run --rm --no-deps -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile </dev/null 2>&1)"; then
+    PROXY_RECUSA=""
+    return 0
+  fi
+  PROXY_RECUSA="${saida:-(a conferência do Caddy não devolveu mensagem)}"
+  return 1
+}
+
+# O `up -d` do parque. Com a configuração do proxy recusada, sobe todo serviço
+# menos o caddy: um `up -d` sem nome recria o Caddy quando a imagem dele muda,
+# e é justamente esse o caso em que a imagem nova recusa o arquivo do operador.
+# A lista vem do `config --services`, que só lista serviço de profile ativo
+# (nomear à mão ligaria profile desligado).
+subir_o_parque() {
+  [ -n "${PROXY_RECUSA:-}" ] || { dc up -d; return; }
+  local servicos
+  servicos="$(dc config --services | grep -vx caddy)" || return 1
+  # shellcheck disable=SC2086  # um nome de serviço por palavra
+  dc up -d $servicos
+}
+
+# Recria o Caddy, que lê o Caddyfile por bind mount de arquivo e por isso não
+# vê a versão nova sem ser recriado (ver o comentário no update.sh) — só se a
+# conferência aprovou.
+recriar_o_proxy() {
+  if [ -n "${PROXY_RECUSA:-}" ]; then
+    c_ylw "⚠ O proxy NÃO foi recriado: a configuração nova não passou na conferência do Caddy."
+    c_ylw "  O proxy anterior segue no ar e o CRM continua respondendo. A causa mais comum"
+    c_ylw "  é um arquivo seu em caddy-sites/. O que o Caddy disse:"
+    printf '%s\n' "$PROXY_RECUSA" | tail -n 6 | sed 's/^/    /'
+    c_ylw "  Depois de corrigir, confira: docker compose $(dc_files) run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile"
+    c_ylw "  e só com a conferência limpa aplique: docker compose $(dc_files) up -d --force-recreate caddy"
+    return 1
+  fi
+  dc up -d --force-recreate --no-deps caddy >/dev/null 2>&1 \
+    && c_grn "✓ proxy recarregado com a configuração desta versão" \
+    || c_ylw "⚠ não consegui recriar o proxy — rode: docker compose $(dc_files) up -d --force-recreate caddy"
+}
+
 # ── O rollback dos pins de versão (#1955, critério 4) ───────────────────────
 #
 # `gravar_imagens` troca os OITO pins de versão do `.env` ANTES de baixar

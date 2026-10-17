@@ -2,7 +2,7 @@
  * COBRAR UM PRODUTO DO CATÁLOGO — a cadeia que vai do "quero comprar" ao link.
  *
  * É o meio que faltava entre as duas pontas que já existiam: o adaptador da
- * InfinitePay (`provedores/infinitepay.ts`) e o schema da 0683.
+ * InfinitePay (`provedores/infinitepay.ts`) e o schema da 0689.
  *
  * ## A ordem importa, e ela é esta
  *

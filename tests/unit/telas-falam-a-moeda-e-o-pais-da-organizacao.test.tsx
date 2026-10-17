@@ -52,6 +52,8 @@ const XISTAO: PerfilDoPais = {
     valida: () => true,
     normaliza: (v) => v,
   },
+  idioma: "xi-XI",
+  fusoDoSugerido: "UTC",
   lei: null,
   calendario: { feriados: [], rotulo: "feriados do Xistão" },
   padroesDePii: [],

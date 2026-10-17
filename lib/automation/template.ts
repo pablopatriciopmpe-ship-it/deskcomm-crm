@@ -1,4 +1,5 @@
 import { resolveField } from "@/lib/automation/conditions";
+import { nomeDoContato, type ContatoNomeavel } from "@/lib/contacts/rotulo-do-contato";
 
 const ALIASES: Record<string, string> = {
   nome: "contact.name",
@@ -56,8 +57,13 @@ export function renderTemplate(
   formatarValor: (valor: string) => string = (valor) => valor,
 ): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, path: string) => {
+    // `{{nome}}` fala com a pessoa: segue a régua única de nome de gente
+    // (cadastrado, depois o perfil do WhatsApp). Contato que chega pelo
+    // WhatsApp tem `name` nulo — só `contact.name` saía "Olá , ...".
     const resolved =
-      resolveField(context, ALIASES[path] ?? path) ?? campoPersonalizadoDoLead(context, path);
+      path === "nome" || path === "primeiro_nome"
+        ? nomeDoContato(context.contact as ContatoNomeavel | undefined)
+        : (resolveField(context, ALIASES[path] ?? path) ?? campoPersonalizadoDoLead(context, path));
     // `{{primeiro_nome}}` = primeira palavra do nome, como no Inbox e na campanha.
     const texto = String(resolved ?? "");
     return formatarValor(path === "primeiro_nome" ? (texto.trim().split(/\s+/)[0] ?? "") : texto);
