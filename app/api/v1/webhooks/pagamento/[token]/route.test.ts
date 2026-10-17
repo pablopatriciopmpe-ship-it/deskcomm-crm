@@ -132,7 +132,10 @@ describe("o caminho feliz", () => {
     const args = escritas("webhook_events_log")[0]!.passos[0]!.args[0] as Record<string, unknown>;
     expect(args.raw_body).toBeUndefined();
     expect(args.organization_id).toBe(ORG);
-    expect(args.external_id).toBe(AVISO.invoice_slug);
+    // A chave de repetição é fatura + TRANSAÇÃO. Com a fatura sozinha, um aviso
+    // anterior de outra transação ocupava a chave e o aviso que de fato pagou
+    // era respondido como "repetido", sem nunca ser processado.
+    expect(args.external_id).toBe(`${AVISO.invoice_slug}:${AVISO.transaction_nsu}`);
   });
 
   it("não guarda o token do caminho na linha do log", async () => {

@@ -17,17 +17,31 @@
  * fecha a porta por último — `payment_charges_conferida_antes_de_paga` recusa
  * `paid` sem o carimbo da conferência.
  *
- * ## `pula` em organização parada
+ * ## Organização parada: a SUSPENSA segue, a encerrada não
  *
- * Ele busca o recibo do provedor e manda mensagem: sai para fora e custa. Mas
- * a cobrança fica `pending`, e a reconciliação a encontra quando a organização
- * voltar — pagamento não se perde por suspensão.
+ * Ele sai para fora (busca o recibo) e manda mensagem, então seria candidato
+ * natural a `pula`. Não é, e o motivo é de quem paga:
+ *
+ *   **o cliente final já pagou, e ele não tem nada a ver com a mensalidade que
+ *   a empresa deve à instalação.** Recusar o registro não desfaz o pagamento —
+ *   só esconde que ele aconteceu. Pior: `skipped` conta como CONSUMIDO, então o
+ *   aviso morria ali, a cobrança ficava `pending` para sempre e ninguém nunca
+ *   soube. (Esta seção dizia que "a reconciliação a encontra quando a
+ *   organização voltar". Não existia reconciliação nenhuma no código, e a sonda
+ *   diária só lê cobranças JÁ pagas. Era promessa falsa.)
+ *
+ * Suspensa segue; **redigida e arquivada não**. `parada` na régua da casa é
+ * `status != 'active'`, e isso inclui organização apagada por LGPD e
+ * organização encerrada: confirmar venda e entregar arquivo nessas duas estaria
+ * errado. A separação é feita aqui dentro, porque o dispatcher só oferece
+ * `roda` ou `pula`.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import type { EventHandler, EventRow, HandlerResult } from "@/lib/event-log/dispatcher";
 import { logger } from "@/lib/logger";
+import { ehOperante, estaSuspensa } from "@/lib/organizacao/operante";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { prepararEntrega } from "./entrega";
 import { conferirPeloRecibo, ErroDaInfinitePay } from "./provedores/infinitepay";
@@ -52,6 +66,19 @@ async function handle(row: EventRow): Promise<HandlerResult> {
   if (!row.entity_id) return resultado("skipped", "sem_cobranca");
   const admin = createAdminClient();
 
+  // Ver o cabeçalho: suspensa SEGUE, redigida e arquivada não. Uma leitura por
+  // chave primária, antes de qualquer trabalho.
+  const { data: org, error: erroDaOrg } = await admin
+    .from("organizations")
+    .select("status")
+    .eq("id", row.organization_id)
+    .maybeSingle();
+  if (erroDaOrg) return resultado("error", `leitura da organizacao falhou: ${erroDaOrg.code ?? "sem_codigo"}`);
+  const statusDaOrg = (org as { status?: string | null } | null)?.status;
+  if (!ehOperante(statusDaOrg) && !estaSuspensa(statusDaOrg)) {
+    return resultado("skipped", "organizacao_encerrada");
+  }
+
   const { data: cobranca, error } = await admin
     .from("payment_charges")
     .select(
@@ -63,7 +90,13 @@ async function handle(row: EventRow): Promise<HandlerResult> {
 
   if (error) return resultado("error", `leitura da cobranca falhou: ${error.code ?? "sem_codigo"}`);
   if (!cobranca) return resultado("skipped", "cobranca_desconhecida");
-  if (cobranca.status === "paid") return resultado("skipped", "ja_confirmada");
+  // A baixa acontece ANTES da entrega, de propósito (o dinheiro entrou, e isso
+  // é fato). Mas encerrar aqui matava a retentativa: entrega que falhasse por
+  // motivo passageiro devolvia `error` para a fila, a fila repetia, e a
+  // repetição parava NESTA linha — o comprador pagava e nunca recebia. Agora
+  // `paid` manda terminar o serviço; `prepararEntrega` é quem diz se já foi
+  // feito, e nesse caso nada é reenviado.
+  if (cobranca.status === "paid") return entregar(admin, row.organization_id, cobranca.order_id);
 
   const nsu = typeof row.payload.transaction_nsu === "string" ? row.payload.transaction_nsu : "";
   if (!nsu) return resultado("skipped", "aviso_sem_transacao");
@@ -146,6 +179,10 @@ async function entregar(
   if ("motivo" in entrega) {
     // Produto sem arquivo não é defeito: é venda de coisa que não se baixa.
     if (entrega.motivo === "sem_arquivo") return resultado("ok", "pago_sem_arquivo");
+    // Serviço já concluído (aviso repetido, ou a outra ponta da corrida). Não é
+    // erro: virar `error` faria a fila repetir para sempre, e um segundo link
+    // nunca é mandado.
+    if (entrega.motivo === "ja_entregue") return resultado("ok", "ja_entregue");
     return resultado("error", "entrega_nao_nasceu");
   }
 
@@ -203,7 +240,8 @@ async function entregar(
 
 export const confirmarPagamentoHandler: EventHandler = {
   key: CONSUMER_KEY,
-  naOrgParada: "pula",
+  // `roda`, e o cabeçalho explica: quem pagou foi o cliente final.
+  naOrgParada: "roda",
   events: [EVENTO_AVISO_DE_PAGAMENTO],
   handle,
 };

@@ -186,7 +186,14 @@ export async function POST(req: NextRequest, { params }: Rota) {
   const { error: erroDoLog } = await admin.from("webhook_events_log").insert({
     organization_id: conta.organization_id,
     provider: PROVEDOR_INFINITEPAY,
-    external_id: aviso.data.invoice_slug,
+    // A CHAVE DE REPETIÇÃO é fatura + transação, não a fatura sozinha. Uma
+    // fatura pode receber mais de um aviso com transações DIFERENTES (tentativa
+    // que falha e depois a que passa), e com a fatura sozinha o primeiro
+    // ocupava a chave: o segundo aviso — o que de fato pagou — era respondido
+    // como "repetido" e nunca processado. O cliente pagava e não recebia. Com o
+    // token vazado isso virava ataque: mandar primeiro uma transação inventada
+    // calava a verdadeira.
+    external_id: `${aviso.data.invoice_slug}:${aviso.data.transaction_nsu}`,
     event_type: EVENTO_AVISO_DE_PAGAMENTO,
     http_method: "POST",
     status: "received",
@@ -214,6 +221,10 @@ export async function POST(req: NextRequest, { params }: Rota) {
   // Por isso a repetição também procura o evento, e só emite se ele faltar. A
   // corrida que sobra (dois avisos simultâneos lendo o vazio) é estreita e o
   // consumidor é idempotente pelo estado da cobrança, não pelo evento.
+  //
+  // A busca é pela MESMA TRANSAÇÃO, não só pela cobrança: perguntar "existe
+  // algum evento desta cobrança?" fazia um aviso anterior, de outra transação,
+  // responder pelo de agora — e o de agora nunca era emitido.
   if (repetido) {
     const { data: jaEmitido, error: erroDaBusca } = await admin
       .from("event_log")
@@ -221,6 +232,7 @@ export async function POST(req: NextRequest, { params }: Rota) {
       .eq("organization_id", conta.organization_id)
       .eq("event_type", EVENTO_AVISO_DE_PAGAMENTO)
       .eq("entity_id", cobranca.id)
+      .eq("payload->>transaction_nsu", aviso.data.transaction_nsu)
       .limit(1)
       .maybeSingle();
 

@@ -67,6 +67,13 @@ const RODA: EventHandler[] = [
   // #2591 — tarefa interna para o dono da carteira: escrita no próprio banco,
   // sem rede, roda com a organização parada (mesma régua do aviso de etapa).
   avisoAoDonoDaCarteira,
+  // 0689 — sai para fora (confere o recibo) e manda mensagem, então seria
+  // candidato natural a `pula`. RODA porque QUEM PAGOU FOI O CLIENTE FINAL, que
+  // não tem nada a ver com a mensalidade que a empresa deve à instalação:
+  // `skipped` conta como consumido, então pular perdia o aviso para sempre e a
+  // cobrança ficava `pending` sem ninguém saber. A separação que importa é
+  // dentro do handler — suspensa segue, redigida e arquivada não.
+  confirmarPagamentoHandler,
 ];
 
 const PULA: EventHandler[] = [
@@ -88,10 +95,6 @@ const PULA: EventHandler[] = [
   conversaoDeQualificacaoHandler,
   conversaoDeEtapaMetaHandler,
   pinoReintentoHandler,
-  // 0683 — confere o recibo no provedor e manda o link da entrega: sai para
-  // fora e custa. A cobranca fica `pending` e a reconciliacao a encontra quando
-  // a organizacao voltar; pagamento nao se perde por suspensao.
-  confirmarPagamentoHandler,
 ];
 
 const PREFIXO_DE_TESTE = "teste-org-parada";

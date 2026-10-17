@@ -210,6 +210,34 @@ create unique index if not exists order_deliveries_token
 create index if not exists order_deliveries_pedido_idx
   on public.order_deliveries (organization_id, order_id);
 
+-- UMA entrega VIVA por pedido. Sem esta trava, `prepararEntrega` consulta e
+-- depois insere sem lock: dois avisos simultaneos leem "nao ha entrega", os
+-- dois inserem, e o pedido passa a ter DOIS links validos, cada um com token
+-- proprio, os dois abrindo o arquivo. Parcial porque a revogada e HISTORICO —
+-- ela fica, e um link novo pode nascer depois dela.
+--
+-- Antes de criar: se algum clone chegou a colecionar duplicata rodando a versao
+-- sem a trava, a mais nova fica e as outras viram revogadas. Sem isto o CREATE
+-- INDEX falharia num banco com dados e o `update.sh` seguiria SEM a trava — a
+-- armadilha que a doutrina de migrations descreve.
+with ranqueadas as (
+  select id,
+         row_number() over (partition by organization_id, order_id
+                            order by entregue_em desc nulls last, id desc) as posicao
+    from public.order_deliveries
+   where revogada_em is null
+)
+update public.order_deliveries d
+   set revogada_em = now(),
+       motivo_revogacao = 'duplicata_antes_da_trava'
+  from ranqueadas r
+ where r.id = d.id
+   and r.posicao > 1;
+
+create unique index if not exists order_deliveries_uma_viva_por_pedido
+  on public.order_deliveries (organization_id, order_id)
+  where revogada_em is null;
+
 drop trigger if exists trg_order_deliveries_touch on public.order_deliveries;
 create trigger trg_order_deliveries_touch
   before update on public.order_deliveries

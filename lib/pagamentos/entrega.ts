@@ -55,7 +55,7 @@ export async function prepararEntrega(
   admin: SupabaseClient,
   organizationId: string,
   orderId: string,
-): Promise<EntregaCriada | { motivo: "sem_arquivo" } | { motivo: "falhou" }> {
+): Promise<EntregaCriada | { motivo: "sem_arquivo" | "ja_entregue" | "falhou" }> {
   // Os arquivos vêm dos produtos DESTE pedido, pelo item — e não do catálogo
   // inteiro. Produto sem arquivo não é defeito: é venda de coisa que não se
   // entrega por download (consulta, serviço), e quem chama decide o que dizer.
@@ -93,7 +93,10 @@ export async function prepararEntrega(
     // O token em claro não existe mais em lugar nenhum — é o ponto de guardar o
     // hash. Quem precisa do endereço de novo pede um link novo pela tela, o que
     // revoga o anterior. Aqui a entrega já foi feita e não se repete.
-    return { motivo: "falhou" };
+    //
+    // `ja_entregue`, e NÃO `falhou`: quem chama transforma `falhou` em `error`,
+    // e a fila repetiria para sempre um serviço que já está concluído.
+    return { motivo: "ja_entregue" };
   }
 
   const token = tokenDaEntrega();
@@ -108,7 +111,11 @@ export async function prepararEntrega(
     expira_em: expiraEm,
   });
 
-  if (error) return { motivo: "falhou" };
+  // A corrida que a consulta acima não fecha: dois avisos simultâneos leem o
+  // vazio e os dois tentam inserir. Quem perde leva 23505 do índice
+  // `order_deliveries_uma_viva_por_pedido` — e isso é "já entregue", não falha.
+  // Sem a distinção, o perdedor mandaria um SEGUNDO link, igualmente válido.
+  if (error) return { motivo: error.code === "23505" ? "ja_entregue" : "falhou" };
 
   return { token, url: urlDaEntrega(token), expiraEm, arquivos: arquivos.length };
 }
