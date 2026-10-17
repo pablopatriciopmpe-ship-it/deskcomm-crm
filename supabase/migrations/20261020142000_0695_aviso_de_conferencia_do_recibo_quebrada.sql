@@ -64,6 +64,15 @@ alter table public.agent_inbox_items
     'canal_pausado',
     'cobranca',
     'email_de_login_trocado',
+    -- (migration 0655, #2529) os dois kinds do lembrete de tarefa. Eles NÃO são
+    -- desta entrega: entraram na main enquanto esta branch vivia, e estão aqui
+    -- porque este bloco RECONSTRÓI a lista inteira. Sem copiá-los, o clone que
+    -- aplica a cadeia perderia os dois em silêncio — quem grava captura o 23514
+    -- e segue, então o aviso de tarefa simplesmente nunca abriria. É o defeito
+    -- que `check-do-baseline-nao-diverge-da-cadeia` e
+    -- `kind-check-migration-x-baseline` existem para pegar, e pegaram.
+    'task_due',
+    'task_overdue',
     -- (migration 0695) a conferência do recibo do provedor parou de reconhecer
     -- a página. Enquanto durar, nenhuma venda é confirmada e nenhum produto sai.
     'conferencia_do_recibo_quebrada',
