@@ -1172,6 +1172,11 @@ export const AUDIT_ACTIONS = [
   // é verificável pela API, então o carimbo humano é a única prova — e a
   // pergunta que a auditoria faz depois é "quem disse que estava conferido?".
   "pagamento.chave_pix_conferida",
+  // Alguém da equipe atestou que o aviso de pagamento (webhook) está
+  // configurado no painel do provedor. Mesma razão do carimbo da chave PIX, e
+  // consequência pior quando falta: sem o aviso o cliente paga e a compra nunca
+  // é confirmada nem entregue.
+  "pagamento.webhook_conferido",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

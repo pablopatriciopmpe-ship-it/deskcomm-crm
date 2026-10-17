@@ -10,6 +10,7 @@
  *
  *   pnpm tsx scripts/configurar-pagamento.ts --org <uuid> --handle <infinitetag>
  *   pnpm tsx scripts/configurar-pagamento.ts --org <uuid> --conferir-pix
+ *   pnpm tsx scripts/configurar-pagamento.ts --org <uuid> --conferir-webhook
  *
  * O segundo comando é o carimbo humano de que a chave PIX está cadastrada na
  * conta do provedor. Ele existe porque **a InfinitePay não deixa checar isso
@@ -42,7 +43,15 @@ async function main(): Promise<void> {
 
   const org = exigir(arg("org"), "org");
 
-  if (process.argv.includes("--conferir-pix")) {
+  // Os dois carimbos humanos, pela mesma porta: as colunas mudam, o resto é
+  // idêntico (dono obrigatório, conta ativa, uma organização).
+  const carimbo = process.argv.includes("--conferir-pix")
+    ? { em: "pix_conferido_em", por: "pix_conferido_por", nome: "Chave PIX" }
+    : process.argv.includes("--conferir-webhook")
+      ? { em: "webhook_conferido_em", por: "webhook_conferido_por", nome: "Aviso de pagamento" }
+      : null;
+
+  if (carimbo) {
     // O carimbo TEM dono: `payment_provider_credentials_conferencia_coerente`
     // recusa data sem responsável, porque a pergunta que a auditoria faz depois
     // é "quem disse que estava conferido?". Sem `--por`, usa um admin da
@@ -65,7 +74,7 @@ async function main(): Promise<void> {
 
     const { error } = await admin
       .from("payment_provider_credentials")
-      .update({ pix_conferido_em: new Date().toISOString(), pix_conferido_por: quem })
+      .update({ [carimbo.em]: new Date().toISOString(), [carimbo.por]: quem })
       .eq("organization_id", org)
       .eq("provider", PROVEDOR_INFINITEPAY)
       .eq("is_active", true);
@@ -73,7 +82,7 @@ async function main(): Promise<void> {
       console.error("Não deu para carimbar:", error.message);
       process.exit(1);
     }
-    console.info("Chave PIX marcada como conferida por", quem);
+    console.info(`${carimbo.nome} marcado como conferido por`, quem);
     return;
   }
 
@@ -122,6 +131,7 @@ async function main(): Promise<void> {
   console.info("");
   console.info("Depois de conferir a chave, carimbe aqui:");
   console.info(`  pnpm tsx scripts/configurar-pagamento.ts --org ${org} --conferir-pix`);
+  console.info(`  pnpm tsx scripts/configurar-pagamento.ts --org ${org} --conferir-webhook`);
   console.info("");
   console.info("Sem esse carimbo a cobrança é recusada — e é melhor assim: sem a chave,");
   console.info("o PIX falha na tela do cliente depois de ele ter decidido comprar.");

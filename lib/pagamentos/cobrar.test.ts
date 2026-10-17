@@ -39,7 +39,12 @@ const ORG = "aaaaaaaa-0000-4000-8000-000000000001";
 const CONTATO = "bbbbbbbb-0000-4000-8000-000000000002";
 
 interface Mundo {
-  conta: { id: string; handle: string; pix_conferido_em: string | null } | null;
+  conta: {
+    id: string;
+    handle: string;
+    pix_conferido_em: string | null;
+    webhook_conferido_em: string | null;
+  } | null;
   produto: { id: string; codigo: string; nome: string; preco_cents: number; ativo: boolean } | null;
 }
 let m: Mundo;
@@ -61,7 +66,12 @@ beforeEach(() => {
   h.provedorResponde = { checkoutUrl: "https://checkout.infinitepay.io/abc" };
   h.chamadasAoProvedor = [];
   m = {
-    conta: { id: "conta-1", handle: "minhaloja", pix_conferido_em: "2026-10-01T00:00:00Z" },
+    conta: {
+      id: "conta-1",
+      handle: "minhaloja",
+      pix_conferido_em: "2026-10-01T00:00:00Z",
+      webhook_conferido_em: "2026-10-01T00:00:00Z",
+    },
     produto: { id: "prod-1", codigo: "EBOOK", nome: "Ebook de Vendas", preco_cents: 12990, ativo: true },
   };
   h.banco = bancoFalso(responder);
@@ -89,6 +99,17 @@ describe("as recusas que acontecem ANTES de escrever", () => {
     m.conta = { ...m.conta!, pix_conferido_em: null };
     const r = await cobrar();
     expect(r).toMatchObject({ motivo: "chave_pix_nao_conferida" });
+    expect(escritas("orders")).toHaveLength(0);
+  });
+
+  it("recusa quando ninguém conferiu o aviso de pagamento", async () => {
+    // A PIOR falta das três, e a única que custa dinheiro a QUEM COMPRA: sem o
+    // webhook cadastrado no provedor, o link funciona, o cliente paga, o
+    // dinheiro entra na conta do vendedor — e nada aqui é confirmado nem
+    // entregue. Melhor não vender do que vender e não entregar.
+    m.conta = { ...m.conta!, webhook_conferido_em: null };
+    const r = await cobrar();
+    expect(r).toMatchObject({ motivo: "webhook_nao_conferido" });
     expect(escritas("orders")).toHaveLength(0);
   });
 

@@ -34,13 +34,18 @@ export default async function PagamentosPage() {
 
   const { data } = await (await createClient())
     .from("payment_provider_credentials_safe")
-    .select("id, handle, pix_conferido_em")
+    .select("id, handle, pix_conferido_em, webhook_conferido_em")
     .eq("organization_id", org.orgId)
     .eq("provider", PROVEDOR_INFINITEPAY)
     .eq("is_active", true)
     .maybeSingle();
 
-  const conta = data as { id: string; handle: string; pix_conferido_em: string | null } | null;
+  const conta = data as {
+    id: string;
+    handle: string;
+    pix_conferido_em: string | null;
+    webhook_conferido_em: string | null;
+  } | null;
 
   return (
     <ContaDePagamento
@@ -50,6 +55,7 @@ export default async function PagamentosPage() {
               configurada: true,
               handle: conta.handle,
               pixConferidoEm: conta.pix_conferido_em,
+              webhookConferidoEm: conta.webhook_conferido_em,
               webhookUrl: urlDoWebhook(conta.id),
             }
           : { configurada: false }

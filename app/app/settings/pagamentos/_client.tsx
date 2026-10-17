@@ -32,14 +32,51 @@ export interface EstadoDaConta {
   configurada: boolean;
   handle?: string;
   pixConferidoEm?: string | null;
+  webhookConferidoEm?: string | null;
   webhookUrl?: string;
 }
+
+type Carimbo = "chave_pix" | "webhook";
 
 export function ContaDePagamento({ inicial }: { inicial: EstadoDaConta }) {
   const [conta, setConta] = useState<EstadoDaConta>(inicial);
   const [handle, setHandle] = useState(inicial.handle ?? "");
   const [salvando, setSalvando] = useState(false);
-  const [conferindo, setConferindo] = useState(false);
+  const [conferindo, setConferindo] = useState<Carimbo | null>(null);
+
+  /**
+   * Relê o estado do servidor. Chamada depois de QUALQUER falha: quando a
+   * escrita pode ter acontecido e a resposta não chegou, continuar mostrando o
+   * que a tela achava é pior que mostrar nada — a tela diria "chave conferida"
+   * sobre uma conta que o servidor acabou de trocar e descarimbar.
+   */
+  async function reconciliar() {
+    try {
+      const r = await fetch("/api/v1/pagamentos/conta");
+      const corpo = (await r.json()) as {
+        data?: {
+          configurada: boolean;
+          handle?: string;
+          pix_conferido_em?: string | null;
+          webhook_conferido_em?: string | null;
+          webhook_url?: string;
+        };
+      };
+      if (!r.ok || !corpo.data) return;
+      const d = corpo.data;
+      setConta({
+        configurada: d.configurada,
+        handle: d.handle,
+        pixConferidoEm: d.pix_conferido_em ?? null,
+        webhookConferidoEm: d.webhook_conferido_em ?? null,
+        webhookUrl: d.webhook_url,
+      });
+      setHandle(d.handle ?? "");
+    } catch {
+      // Se nem a releitura responde, a tela fica como está e o aviso de erro
+      // que o chamador já mostrou é o que a pessoa tem.
+    }
+  }
 
   async function salvar() {
     setSalvando(true);
@@ -55,39 +92,58 @@ export function ContaDePagamento({ inicial }: { inicial: EstadoDaConta }) {
       };
       if (!r.ok || !corpo.data) {
         toast.error(corpo.error?.message ?? "Não deu para salvar.");
+        await reconciliar();
         return;
       }
-      // Trocar a conta zera o carimbo no servidor; a tela segue a mesma regra,
-      // senão mostraria "conferida" para uma conta que ninguém olhou.
+      // Trocar a conta zera os DOIS carimbos no servidor; a tela segue a mesma
+      // regra, senão mostraria "conferido" para uma conta que ninguém olhou e
+      // para um aviso que ninguém ligou naquele painel.
       const trocou = conta.handle !== undefined && conta.handle !== corpo.data.handle;
       setConta({
         configurada: true,
         handle: corpo.data.handle,
         webhookUrl: corpo.data.webhook_url,
         pixConferidoEm: trocou ? null : conta.pixConferidoEm,
+        webhookConferidoEm: trocou ? null : conta.webhookConferidoEm,
       });
       toast.success("Conta salva.");
+    } catch {
+      toast.error("Não deu para falar com o servidor. Confira como ficou.");
+      await reconciliar();
     } finally {
       setSalvando(false);
     }
   }
 
-  async function conferirPix() {
-    setConferindo(true);
+  async function carimbar(o_que: Carimbo) {
+    setConferindo(o_que);
     try {
-      const r = await fetch("/api/v1/pagamentos/conta", { method: "PATCH" });
+      const r = await fetch("/api/v1/pagamentos/conta", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // A conta que ESTA tela está mostrando. Se o servidor já tiver outra, a
+        // assinatura é recusada com 409 em vez de carimbar a conta errada.
+        body: JSON.stringify({ handle: conta.handle, o_que }),
+      });
       const corpo = (await r.json()) as {
-        data?: { pix_conferido_em: string };
+        data?: { o_que: Carimbo; conferido_em: string };
         error?: { message: string };
       };
       if (!r.ok || !corpo.data) {
         toast.error(corpo.error?.message ?? "Não deu para registrar.");
+        await reconciliar();
         return;
       }
-      setConta((c) => ({ ...c, pixConferidoEm: corpo.data!.pix_conferido_em }));
+      const em = corpo.data.conferido_em;
+      setConta((c) =>
+        o_que === "chave_pix" ? { ...c, pixConferidoEm: em } : { ...c, webhookConferidoEm: em },
+      );
       toast.success("Conferência registrada.");
+    } catch {
+      toast.error("Não deu para falar com o servidor. Confira como ficou.");
+      await reconciliar();
     } finally {
-      setConferindo(false);
+      setConferindo(null);
     }
   }
 
@@ -100,7 +156,16 @@ export function ContaDePagamento({ inicial }: { inicial: EstadoDaConta }) {
     }
   }
 
-  const pronto = conta.configurada && Boolean(conta.pixConferidoEm);
+  // Assinar a chave de uma conta enquanto o campo mostra OUTRA tag seria assinar
+  // sobre o que não está na tela. Salve primeiro.
+  const temEdicaoNaoSalva = conta.configurada && handle.trim() !== (conta.handle ?? "");
+
+  // Os TRÊS passos. O do webhook entra aqui porque ele é o único cuja falta faz
+  // o cliente PAGAR e não receber: sem o aviso configurado no provedor, o
+  // dinheiro entra na conta e o CRM nunca sabe. A tela já o apresentava como
+  // obrigatório; agora ele também é.
+  const pronto =
+    conta.configurada && Boolean(conta.pixConferidoEm) && Boolean(conta.webhookConferidoEm);
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4 md:p-6">
@@ -149,7 +214,10 @@ export function ContaDePagamento({ inicial }: { inicial: EstadoDaConta }) {
             </div>
           </div>
           <div>
-            <Button onClick={salvar} disabled={salvando || handle.trim().length < 2}>
+            <Button
+              onClick={salvar}
+              disabled={salvando || conferindo !== null || handle.trim().length < 2}
+            >
               {salvando ? "Salvando…" : conta.configurada ? "Salvar" : "Ligar recebimento"}
             </Button>
           </div>
@@ -178,6 +246,27 @@ export function ContaDePagamento({ inicial }: { inicial: EstadoDaConta }) {
               Guarde-o em lugar seguro: quem tiver este endereço consegue mandar avisos ao seu
               sistema. Ele muda se a chave interna da instalação for trocada.
             </p>
+            <p className="text-sm">
+              Este passo é o mais importante dos três. Sem ele o link funciona, o cliente{" "}
+              <strong>paga</strong>, o dinheiro entra na sua conta — e o sistema nunca é avisado:
+              nada é confirmado e nada é entregue. Também não conseguimos checar isso sozinhos.
+            </p>
+            {conta.webhookConferidoEm ? (
+              <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                Conferido em {new Date(conta.webhookConferidoEm).toLocaleDateString("pt-BR")}.
+              </p>
+            ) : (
+              <div>
+                <Button
+                  onClick={() => void carimbar("webhook")}
+                  disabled={conferindo !== null || salvando || temEdicaoNaoSalva}
+                >
+                  {conferindo === "webhook"
+                    ? "Registrando…"
+                    : "Conferi: colei o endereço no painel da InfinitePay"}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -202,8 +291,13 @@ export function ContaDePagamento({ inicial }: { inicial: EstadoDaConta }) {
               </p>
             ) : (
               <div>
-                <Button onClick={conferirPix} disabled={conferindo}>
-                  {conferindo ? "Registrando…" : "Conferi: a chave PIX está cadastrada"}
+                <Button
+                  onClick={() => void carimbar("chave_pix")}
+                  disabled={conferindo !== null || salvando || temEdicaoNaoSalva}
+                >
+                  {conferindo === "chave_pix"
+                    ? "Registrando…"
+                    : "Conferi: a chave PIX está cadastrada"}
                 </Button>
               </div>
             )}

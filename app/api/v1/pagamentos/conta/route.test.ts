@@ -42,7 +42,16 @@ vi.mock("@/lib/env", () => ({
 import { GET, PATCH, PUT } from "./route";
 
 interface Mundo {
-  conta: { id: string; handle: string; pix_conferido_em: string | null } | null;
+  conta: {
+    id: string;
+    handle: string;
+    pix_conferido_em: string | null;
+    webhook_conferido_em?: string | null;
+  } | null;
+  /** O 23505 do índice único parcial, quando duas pessoas ligam a conta juntas. */
+  upsertColide: boolean;
+  /** A linha que a OUTRA requisição gravou enquanto esta lia "não existe". */
+  vencedoraDaCorrida: { id: string; handle: string } | null;
 }
 let m: Mundo;
 
@@ -51,11 +60,33 @@ function responder(c: Cadeia): Resposta {
     return { data: m.conta ? { ...m.conta, is_active: true } : null };
   }
   if (c.tabela === "payment_provider_credentials") {
-    if (operacao(c) === "update") return { data: m.conta ? { id: m.conta.id } : null };
+    if (operacao(c) === "upsert" && m.upsertColide) {
+      m.upsertColide = false;
+      return { error: { code: "23505", message: "duplicate key" } };
+    }
+    if (operacao(c) === "update") {
+      // O compare-and-set do carimbo é um `.eq("handle", ...)`: o dublê precisa
+      // HONRAR esse filtro, senão o caso da aba velha passaria sem prova.
+      const filtroDeHandle = c.passos.find((p) => p.metodo === "eq" && p.args[0] === "handle");
+      if (filtroDeHandle && filtroDeHandle.args[1] !== m.conta?.handle) return { data: null };
+      return { data: m.conta ? { id: m.conta.id } : null };
+    }
+    // Depois da colisão, a linha da outra requisição JÁ está no banco — é isso
+    // que a releitura encontra.
+    if (m.vencedoraDaCorrida && !m.upsertColide) return { data: m.vencedoraDaCorrida };
     return { data: m.conta };
   }
   return {};
 }
+
+const patch = (corpo: unknown) =>
+  PATCH(
+    new Request("http://localhost/api/v1/pagamentos/conta", {
+      method: "PATCH",
+      body: JSON.stringify(corpo),
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
 
 const put = (handle: string) =>
   PUT(
@@ -71,7 +102,7 @@ beforeEach(() => {
   h.papelOk = true;
   h.suporteBloqueia = false;
   h.auditorias = [];
-  m = { conta: null };
+  m = { conta: null, upsertColide: false, vencedoraDaCorrida: null };
   h.banco = bancoFalso(responder);
 });
 
@@ -137,7 +168,12 @@ describe("trocar de conta", () => {
     // A chave conferida era da conta ANTERIOR. Deixar o carimbo de pé faria o
     // sistema cobrar numa conta cuja chave ninguém olhou — e o PIX falharia na
     // tela do cliente.
-    m.conta = { id: "conta-1", handle: "antiga", pix_conferido_em: "2026-10-01T00:00:00Z" };
+    m.conta = {
+      id: "conta-1",
+      handle: "antiga",
+      pix_conferido_em: "2026-10-01T00:00:00Z",
+      webhook_conferido_em: "2026-10-01T00:00:00Z",
+    };
     await put("nova");
     const insert = h.banco.cadeias.find(
       (c) => c.tabela === "payment_provider_credentials" && operacao(c) === "upsert",
@@ -145,6 +181,11 @@ describe("trocar de conta", () => {
     const args = insert.passos[0]!.args[0] as Record<string, unknown>;
     expect(args.pix_conferido_em).toBeNull();
     expect(args.pix_conferido_por).toBeNull();
+    // O webhook foi cadastrado no painel da conta ANTERIOR: a nova não tem
+    // aviso nenhum apontando para cá, e manter o carimbo faria o cliente pagar
+    // sem que nada fosse confirmado.
+    expect(args.webhook_conferido_em).toBeNull();
+    expect(args.webhook_conferido_por).toBeNull();
   });
 
   it("salvar a MESMA tag não derruba o carimbo", async () => {
@@ -157,20 +198,69 @@ describe("trocar de conta", () => {
   });
 });
 
-describe("o carimbo da chave PIX", () => {
-  it("registra QUEM assinou", async () => {
-    m.conta = { id: "conta-1", handle: "minhaloja", pix_conferido_em: null };
-    const r = await PATCH();
-    expect(r.status).toBe(200);
-    const update = h.banco.cadeias.find(
+describe("os carimbos", () => {
+  const atualizacao = () =>
+    h.banco.cadeias.find(
       (c) => c.tabela === "payment_provider_credentials" && operacao(c) === "update",
     )!;
-    expect((update.passos[0]!.args[0] as Record<string, unknown>).pix_conferido_por).toBe(USUARIO);
+
+  beforeEach(() => {
+    m.conta = { id: "conta-1", handle: "minhaloja", pix_conferido_em: null };
+  });
+
+  it("o da chave PIX registra QUEM assinou", async () => {
+    const r = await patch({ handle: "minhaloja", o_que: "chave_pix" });
+    expect(r.status).toBe(200);
+    expect((atualizacao().passos[0]!.args[0] as Record<string, unknown>).pix_conferido_por).toBe(
+      USUARIO,
+    );
     expect(h.auditorias[0]!.action).toBe("pagamento.chave_pix_conferida");
+  });
+
+  it("o do webhook é um fato SEPARADO, com carimbo próprio", async () => {
+    // Juntar os dois faria uma assinatura responder por duas conferências, em
+    // dois lugares diferentes do painel do provedor.
+    const r = await patch({ handle: "minhaloja", o_que: "webhook" });
+    expect(r.status).toBe(200);
+    const args = atualizacao().passos[0]!.args[0] as Record<string, unknown>;
+    expect(args.webhook_conferido_por).toBe(USUARIO);
+    expect(args).not.toHaveProperty("pix_conferido_em");
+    expect(h.auditorias[0]!.action).toBe("pagamento.webhook_conferido");
+  });
+
+  it("aba velha NÃO carimba a conta que entrou no lugar", async () => {
+    // A admin A abriu a tela com `minhaloja`; a B trocou para `outraloja`. O
+    // clique da A não pode assinar pela chave de uma conta que ela não viu.
+    const r = await patch({ handle: "antiga", o_que: "chave_pix" });
+    expect(r.status).toBe(409);
+    expect(h.banco.cadeias.some((c) => operacao(c) === "update" && c.tabela.includes("payment")))
+      .toBe(true); // a tentativa ocorreu...
+    expect(h.auditorias).toHaveLength(0); // ...e não virou assinatura.
+  });
+
+  it("recusa carimbo sem dizer de qual conferência", async () => {
+    expect((await patch({ handle: "minhaloja" })).status).toBe(422);
   });
 
   it("recusa carimbar antes de existir conta", async () => {
     m.conta = null;
-    expect((await PATCH()).status).toBe(404);
+    expect((await patch({ handle: "minhaloja", o_que: "chave_pix" })).status).toBe(404);
+  });
+});
+
+describe("duas pessoas ligando a conta ao mesmo tempo", () => {
+  it("quem perde a corrida grava sobre a linha que venceu, não leva 500", async () => {
+    // As duas leram "não existe" e sortearam ids diferentes: o `onConflict: id`
+    // não vê conflito, e o índice único parcial recusa a segunda com 23505.
+    m.upsertColide = true;
+    m.vencedoraDaCorrida = { id: "conta-da-outra", handle: "minhaloja" };
+    const r = await put("minhaloja");
+    expect(r.status).toBe(200);
+    const upserts = h.banco.cadeias.filter(
+      (c) => c.tabela === "payment_provider_credentials" && operacao(c) === "upsert",
+    );
+    expect(upserts).toHaveLength(2);
+    // A segunda gravação é sobre o id da linha que venceu, não sobre o sorteado.
+    expect((upserts[1]!.passos[0]!.args[0] as Record<string, unknown>).id).toBe("conta-da-outra");
   });
 });

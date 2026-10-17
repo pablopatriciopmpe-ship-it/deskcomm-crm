@@ -57,6 +57,10 @@ const ENSINO: Record<string, string> = {
   chave_pix_nao_conferida:
     "a conta de pagamento está ligada mas ninguém conferiu a chave PIX dela, e sem isso o PIX " +
     "falha na mão do cliente. NÃO mande link: avise que a equipe conclui a compra.",
+  webhook_nao_conferido:
+    "ninguém confirmou que o aviso de pagamento está configurado no provedor, e sem ele o " +
+    "cliente paga e a compra nunca é confirmada nem entregue. NÃO mande link: avise que a " +
+    "equipe conclui a compra.",
   produto_desconhecido:
     "não existe produto com esse código no catálogo. Use `crm_search_products` e cobre um código " +
     "que voltou de lá.",
@@ -81,7 +85,7 @@ export async function cobrarProduto(
   // ─── As duas portas, antes de escrever qualquer linha ───────────────────
   const { data: conta } = await admin
     .from("payment_provider_credentials")
-    .select("id, handle, pix_conferido_em")
+    .select("id, handle, pix_conferido_em, webhook_conferido_em")
     .eq("organization_id", pedido.organizationId)
     .eq("provider", PROVEDOR_INFINITEPAY)
     .eq("is_active", true)
@@ -89,6 +93,11 @@ export async function cobrarProduto(
 
   if (!conta) return recusa("sem_conta_de_pagamento");
   if (!conta.pix_conferido_em) return recusa("chave_pix_nao_conferida");
+  // A terceira porta, e a que protege o CLIENTE FINAL: sem o aviso configurado
+  // no provedor, o link nasce, o cliente paga, o dinheiro entra na conta do
+  // vendedor — e nada aqui é confirmado nem entregue. É o único caminho deste
+  // módulo em que quem paga perde dinheiro.
+  if (!conta.webhook_conferido_em) return recusa("webhook_nao_conferido");
 
   const { data: produto } = await admin
     .from("catalog_products")

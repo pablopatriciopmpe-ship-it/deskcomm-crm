@@ -122,9 +122,15 @@ create table if not exists public.payment_provider_credentials (
   -- em claro é o anti-pattern 13 da casa, e o caminho de uma URL ainda vai para
   -- log de proxy, de acesso e de diagnóstico da VPS.
   --
-  -- Por isso o formato é o de `api_tokens`: hash no banco, plaintext mostrado
-  -- UMA vez na criação, para colar na configuração do provedor. Perdeu, gera
-  -- outro — o que custa uma reconfiguração lá, não uma fuga de produto aqui.
+  -- Por isso no banco fica só o HASH. O token em claro não é guardado em lugar
+  -- nenhum: ele é DERIVADO por HMAC do segredo da instalação na hora de montar
+  -- a URL (`lib/pagamentos/token-do-webhook.ts`). Então a tela pode mostrá-lo
+  -- sempre que quem administra precisar reconfigurar o provedor — e um dump,
+  -- um backup ou uma leitura pela REST não levam o segredo, que é o que esta
+  -- coluna protege. (Este comentário dizia "plaintext mostrado UMA vez na
+  -- criação", que é o desenho de `api_tokens` e nunca foi o desta coluna:
+  -- esconder a URL depois da primeira vez impediria a reconfiguração sem
+  -- esconder nada de quem já administra a organização.)
   webhook_path_token_sha256 text not null,
 
   -- O carimbo humano do que a API não responde (ver cabeçalho).

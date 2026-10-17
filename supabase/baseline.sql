@@ -55232,14 +55232,26 @@ create table if not exists public.payment_provider_credentials (
   -- em claro é o anti-pattern 13 da casa, e o caminho de uma URL ainda vai para
   -- log de proxy, de acesso e de diagnóstico da VPS.
   --
-  -- Por isso o formato é o de `api_tokens`: hash no banco, plaintext mostrado
-  -- UMA vez na criação, para colar na configuração do provedor. Perdeu, gera
-  -- outro — o que custa uma reconfiguração lá, não uma fuga de produto aqui.
+  -- Por isso no banco fica só o HASH. O token em claro não é guardado em lugar
+  -- nenhum: ele é DERIVADO por HMAC do segredo da instalação na hora de montar
+  -- a URL (`lib/pagamentos/token-do-webhook.ts`). Então a tela pode mostrá-lo
+  -- sempre que quem administra precisar reconfigurar o provedor — e um dump,
+  -- um backup ou uma leitura pela REST não levam o segredo, que é o que esta
+  -- coluna protege. (Este comentário dizia "plaintext mostrado UMA vez na
+  -- criação", que é o desenho de `api_tokens` e nunca foi o desta coluna:
+  -- esconder a URL depois da primeira vez impediria a reconfiguração sem
+  -- esconder nada de quem já administra a organização.)
   webhook_path_token_sha256 text not null,
 
-  -- O carimbo humano do que a API não responde (ver cabeçalho).
+  -- Os carimbos humanos do que a API não responde (ver cabeçalho). O par da
+  -- chave PIX nasceu aqui; o par do webhook entrou pela 0692, e os dois estão
+  -- NESTE bloco de propósito: um segundo bloco redefinindo a mesma view
+  -- `_safe` quebraria o `update.sh` (lição do #159 — a lista canônica se edita
+  -- onde ela está, nunca se reconstrói ao lado).
   pix_conferido_em timestamptz,
   pix_conferido_por uuid references auth.users(id) on delete set null,
+  webhook_conferido_em timestamptz,
+  webhook_conferido_por uuid references auth.users(id) on delete set null,
 
   is_active boolean not null default true,
   created_by uuid references auth.users(id) on delete set null,
@@ -55270,11 +55282,24 @@ alter table public.payment_provider_credentials
   add constraint payment_provider_credentials_token_e_hash
   check (webhook_path_token_sha256 ~ '^[0-9a-f]{64}$');
 
+-- (migration 0692) Para o clone que já tinha a tabela: `create table if not
+-- exists` acima não acrescenta coluna a tabela que já existe.
+alter table public.payment_provider_credentials
+  add column if not exists webhook_conferido_em timestamptz;
+alter table public.payment_provider_credentials
+  add column if not exists webhook_conferido_por uuid references auth.users(id) on delete set null;
+
 alter table public.payment_provider_credentials
   drop constraint if exists payment_provider_credentials_conferencia_coerente;
 alter table public.payment_provider_credentials
   add constraint payment_provider_credentials_conferencia_coerente
   check ((pix_conferido_em is null) = (pix_conferido_por is null));
+
+alter table public.payment_provider_credentials
+  drop constraint if exists payment_provider_credentials_webhook_conferencia_coerente;
+alter table public.payment_provider_credentials
+  add constraint payment_provider_credentials_webhook_conferencia_coerente
+  check ((webhook_conferido_em is null) = (webhook_conferido_por is null));
 
 -- Uma conta ATIVA por organização e provedor. Parcial: a desativada fica como
 -- histórico (foi com ela que as cobranças antigas nasceram).
@@ -55307,7 +55332,9 @@ create or replace view public.payment_provider_credentials_safe
          is_active,
          created_by,
          created_at,
-         updated_at
+         updated_at,
+         webhook_conferido_em,
+         webhook_conferido_por
     from public.payment_provider_credentials;
 
 comment on view public.payment_provider_credentials_safe is
@@ -55334,6 +55361,7 @@ grant select, insert, update, delete
 grant select (
     id, organization_id, provider, label, handle,
     pix_conferido_em, pix_conferido_por,
+    webhook_conferido_em, webhook_conferido_por,
     is_active, created_by, created_at, updated_at
   ) on public.payment_provider_credentials to authenticated;
 
