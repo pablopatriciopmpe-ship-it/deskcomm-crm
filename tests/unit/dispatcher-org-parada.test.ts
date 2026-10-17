@@ -67,7 +67,7 @@ const RODA: EventHandler[] = [
   // #2591 — tarefa interna para o dono da carteira: escrita no próprio banco,
   // sem rede, roda com a organização parada (mesma régua do aviso de etapa).
   avisoAoDonoDaCarteira,
-  // 0689 — sai para fora (confere o recibo) e manda mensagem, então seria
+  // 0693 — sai para fora (confere o recibo) e manda mensagem, então seria
   // candidato natural a `pula`. RODA porque QUEM PAGOU FOI O CLIENTE FINAL, que
   // não tem nada a ver com a mensalidade que a empresa deve à instalação:
   // `skipped` conta como consumido, então pular perdia o aviso para sempre e a

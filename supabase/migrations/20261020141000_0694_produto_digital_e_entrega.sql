@@ -1,9 +1,9 @@
--- manifest: **O arquivo do produto digital e a entrega — a outra metade do caminho do dinheiro (par da 0689).** Duas tabelas e um bucket: (A) `catalog_product_files`, os arquivos entregáveis de um produto do catálogo (`catalog_products` tem `fotos`, que é vitrine, não entrega), guardando `storage_path` e NUNCA URL — URL assinada vence e URL pública não existe aqui; (B) `order_deliveries`, o que foi entregue e quando, com o token da página pública guardado como **SHA-256** — token em claro no banco é senha em claro. Mais o bucket privado `produtos-digitais`, com caminho prefixado pela organização e **sem policy nenhuma para `authenticated`**: sob RLS, ausência de policy é negação, e é isso que faz o arquivo vendido sair só por URL assinada emitida pelo servidor. Fecha também a LGPD das duas metades: `payment_charges` (0689) e `order_deliveries` entram em `modulo_secoes_lgpd` — a cascata lê dali desde a 0620 em vez de nomear tabela, então nenhuma função de 919 linhas é redefinida. O order bump saiu desta entrega: era tabela sem tela e sem consumidor, e volta quando a tela existir. Sem backfill: tudo nasce vazio.
--- 0690: arquivos do produto digital, entrega e a LGPD das duas
+-- manifest: **O arquivo do produto digital e a entrega — a outra metade do caminho do dinheiro (par da 0693).** Duas tabelas e um bucket: (A) `catalog_product_files`, os arquivos entregáveis de um produto do catálogo (`catalog_products` tem `fotos`, que é vitrine, não entrega), guardando `storage_path` e NUNCA URL — URL assinada vence e URL pública não existe aqui; (B) `order_deliveries`, o que foi entregue e quando, com o token da página pública guardado como **SHA-256** — token em claro no banco é senha em claro. Mais o bucket privado `produtos-digitais`, com caminho prefixado pela organização e **sem policy nenhuma para `authenticated`**: sob RLS, ausência de policy é negação, e é isso que faz o arquivo vendido sair só por URL assinada emitida pelo servidor. Fecha também a LGPD das duas metades: `payment_charges` (0693) e `order_deliveries` entram em `modulo_secoes_lgpd` — a cascata lê dali desde a 0620 em vez de nomear tabela, então nenhuma função de 919 linhas é redefinida. O order bump saiu desta entrega: era tabela sem tela e sem consumidor, e volta quando a tela existir. Sem backfill: tudo nasce vazio.
+-- 0694: arquivos do produto digital, entrega e a LGPD das duas
 --
--- ─── O que a 0689 deixou faltando ───────────────────────────────────────────
+-- ─── O que a 0693 deixou faltando ───────────────────────────────────────────
 --
--- A 0689 sabe cobrar: conta do gateway, tentativa de cobrança e item do pedido. Ela
+-- A 0693 sabe cobrar: conta do gateway, tentativa de cobrança e item do pedido. Ela
 -- não sabe o que entregar nem registrar que entregou. Sem isto o pagamento
 -- confirma e não acontece nada — que é pior do que não cobrar.
 --
@@ -89,7 +89,7 @@ create table if not exists public.catalog_product_files (
 );
 
 comment on table public.catalog_product_files is
-  'Arquivos ENTREGÁVEIS de um produto do catálogo (migration 0690). Não confundir com catalog_products.fotos, que é vitrine. Guarda storage_path no bucket privado produtos-digitais, nunca URL: URL assinada vence e pública não existe aqui.';
+  'Arquivos ENTREGÁVEIS de um produto do catálogo (migration 0694). Não confundir com catalog_products.fotos, que é vitrine. Guarda storage_path no bucket privado produtos-digitais, nunca URL: URL assinada vence e pública não existe aqui.';
 
 alter table public.catalog_product_files
   drop constraint if exists catalog_product_files_bytes_check;
@@ -134,7 +134,7 @@ create table if not exists public.order_deliveries (
 );
 
 comment on table public.order_deliveries is
-  'O que foi entregue de um pedido, quando, e o SHA-256 do token da página pública (migration 0690). Token em claro no banco é senha em claro (anti-pattern 13): a página faz o hash do que recebeu e compara. token_sha256 é nulável de propósito — pôr nulo é como a redação de LGPD e a revogação por reembolso derrubam o acesso.';
+  'O que foi entregue de um pedido, quando, e o SHA-256 do token da página pública (migration 0694). Token em claro no banco é senha em claro (anti-pattern 13): a página faz o hash do que recebeu e compara. token_sha256 é nulável de propósito — pôr nulo é como a redação de LGPD e a revogação por reembolso derrubam o acesso.';
 
 alter table public.order_deliveries
   drop constraint if exists order_deliveries_canal_check;
@@ -196,7 +196,7 @@ create trigger trg_order_deliveries_touch
   before update on public.order_deliveries
   for each row execute function public.fn_touch_updated_at();
 
--- ─── Consistência entre organizações (idioma da 0464, igual à 0689) ─────────
+-- ─── Consistência entre organizações (idioma da 0464, igual à 0693) ─────────
 
 create or replace function public.fn_verificar_org_do_arquivo_do_produto()
 returns trigger

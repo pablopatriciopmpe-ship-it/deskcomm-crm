@@ -74,7 +74,7 @@ describe("o tipo sai dos bytes, não do que o navegador declarou", () => {
     ).toBeNull();
   });
 
-  it("todo tipo aceito tem extensão, e o bucket é o privado da 0690", () => {
+  it("todo tipo aceito tem extensão, e o bucket é o privado da 0694", () => {
     for (const tipo of TIPOS_ACEITOS) {
       expect(extensaoDoEntregavel(tipo)).toMatch(/^[a-z0-9]+$/);
     }

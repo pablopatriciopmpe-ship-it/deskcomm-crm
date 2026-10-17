@@ -2,7 +2,7 @@
  * POST   /api/v1/products/:id/arquivos — sobe UM entregável (multipart `file`).
  * DELETE /api/v1/products/:id/arquivos — `{ arquivo_id }`: tira a linha e o objeto.
  *
- * É a metade que faltava do caminho do dinheiro: a 0690 criou a tabela e o
+ * É a metade que faltava do caminho do dinheiro: a 0694 criou a tabela e o
  * bucket, a página `/entrega/[token]` sabe ler, e NADA escrevia. Sem esta rota o
  * dono só punha arquivo no produto por SQL na mão — e um produto vendido para
  * clínica não pode exigir acesso ao servidor.

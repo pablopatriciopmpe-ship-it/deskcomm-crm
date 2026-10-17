@@ -10,7 +10,7 @@
  * ## Por que a escrita usa o cliente de serviço
  *
  * A tabela-base é fechada: `authenticated` só tem SELECT nas colunas que não
- * são segredo (grant por coluna, migration 0689). Então a leitura vai pela
+ * são segredo (grant por coluna, migration 0693). Então a leitura vai pela
  * sessão — e a RLS vale — e a escrita vai pelo serviço, com o
  * `organization_id` resolvido do cookie, nunca do corpo.
  *

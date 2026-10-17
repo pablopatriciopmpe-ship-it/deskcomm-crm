@@ -1,5 +1,5 @@
 -- manifest: **Cobrança avulsa dentro do CRM: a organização cobra o cliente dela e o pedido nasce da conversa.** O módulo `cobranca` (0583/0601) é o dono da INSTALAÇÃO cobrando as organizações — assinatura, chave única, `platform_config`. Aqui é o oposto: cada ORGANIZAÇÃO cobra os clientes dela. Três peças: (A) `payment_provider_credentials`, a conta de gateway POR organização — e no provedor escolhido (InfinitePay) **não há chave de API**, então o que se guarda é o `handle` (público) e o SHA-256 do token do webhook (segredo NOSSO), sem trio de cifra; (B) `payment_charges`, uma linha por TENTATIVA, que é onde mora o ciclo de vida fino (`expired`, `disputed`) que `orders.status` não tem e cujo CHECK não se alarga (lição da 0623), mais o carimbo da conferência pelo recibo, SEM o qual nenhuma linha pode ficar `paid`; (C) `order_items`, item com SNAPSHOT de nome e código, no formato de `crm_proposal_items`. Consistência entre organizações por GATILHO comparando com o pai (idioma da 0464), não por chave composta. Mais o índice único PARCIAL de idempotência do webhook, que o geral (`idx_webhook_events_external_id`) não é. Sem backfill: nenhuma linha existe.
--- 0689: cobrança avulsa por organização — conta do gateway, tentativa de cobrança e item do pedido
+-- 0693: cobrança avulsa por organização — conta do gateway, tentativa de cobrança e item do pedido
 --
 -- ─── O defeito ───────────────────────────────────────────────────────────────
 --
@@ -144,7 +144,7 @@ create table if not exists public.payment_provider_credentials (
 );
 
 comment on table public.payment_provider_credentials is
-  'Conta de gateway de pagamento de CADA organização (migration 0689). Não confundir com cobranca_* (0583), que é a assinatura DA INSTALAÇÃO. O provedor não usa chave de API: o handle é público e o único segredo é o token do webhook, guardado como SHA-256. authenticated lê só as colunas não-secretas, por grant de coluna; a tela usa payment_provider_credentials_safe.';
+  'Conta de gateway de pagamento de CADA organização (migration 0693). Não confundir com cobranca_* (0583), que é a assinatura DA INSTALAÇÃO. O provedor não usa chave de API: o handle é público e o único segredo é o token do webhook, guardado como SHA-256. authenticated lê só as colunas não-secretas, por grant de coluna; a tela usa payment_provider_credentials_safe.';
 
 comment on column public.payment_provider_credentials.pix_conferido_em is
   'Quando alguém confirmou À MÃO que a chave PIX está cadastrada na conta do provedor. Existe porque isso não é verificável pela API: sem a chave, o link nasce 200, o PIX aparece, e só falha na tela do cliente.';
@@ -213,7 +213,7 @@ create or replace view public.payment_provider_credentials_safe
     from public.payment_provider_credentials;
 
 comment on view public.payment_provider_credentials_safe is
-  'payment_provider_credentials sem o hash do token do webhook (migration 0689). É por aqui que a tela lê. O handle aparece: ele é público.';
+  'payment_provider_credentials sem o hash do token do webhook (migration 0693). É por aqui que a tela lê. O handle aparece: ele é público.';
 
 alter table public.payment_provider_credentials enable row level security;
 revoke all on public.payment_provider_credentials from anon, authenticated;
@@ -317,7 +317,7 @@ create table if not exists public.payment_charges (
 );
 
 comment on table public.payment_charges is
-  'Uma linha por TENTATIVA de cobrança de um pedido (migration 0689). É aqui que mora o ciclo de vida fino do pagamento: orders.status não tem expired nem disputed, e alargar aquele CHECK é a armadilha da 0623. O id DESTA linha é o order_nsu enviado ao provedor — é assim que o aviso volta a encontrar a cobrança.';
+  'Uma linha por TENTATIVA de cobrança de um pedido (migration 0693). É aqui que mora o ciclo de vida fino do pagamento: orders.status não tem expired nem disputed, e alargar aquele CHECK é a armadilha da 0623. O id DESTA linha é o order_nsu enviado ao provedor — é assim que o aviso volta a encontrar a cobrança.';
 
 comment on column public.payment_charges.conferido_pelo_recibo_em is
   'Quando o recibo público do provedor foi buscado e o valor bateu. O webhook da InfinitePay não é assinado e o payment_check deles é rota morta, então esta conferência é a única prova de pagamento — e o CHECK payment_charges_conferida_antes_de_paga a torna obrigatória.';
@@ -460,7 +460,7 @@ create table if not exists public.order_items (
 );
 
 comment on table public.order_items is
-  'Item de um pedido, com SNAPSHOT de nome e código (migration 0689). Formato de crm_proposal_items. product_id é on delete set null e o produto é mutável: sem o snapshot, renomear o produto reescreve o que foi vendido no ano passado.';
+  'Item de um pedido, com SNAPSHOT de nome e código (migration 0693). Formato de crm_proposal_items. product_id é on delete set null e o produto é mutável: sem o snapshot, renomear o produto reescreve o que foi vendido no ano passado.';
 
 alter table public.order_items
   drop constraint if exists order_items_quantidade_check;
@@ -612,7 +612,7 @@ alter table public.webhook_events_log
     'waha', 'nuvemshop', 'generic', 'meta_cloud', 'zernio', 'datafy',
     -- (migration 0601) os provedores de cobrança do revendedor.
     'stripe', 'asaas',
-    -- (migration 0689) a cobrança que cada organização faz ao cliente dela.
+    -- (migration 0693) a cobrança que cada organização faz ao cliente dela.
     'infinitepay'
   ));
 
