@@ -1748,6 +1748,20 @@ jobs:
       - name: Build de produção (com o ambiente do E2E)
         run: pnpm e2e:build
         env:
+          # ⚠️ DIVERGÊNCIA DESTA CÓPIA, e a razão está medida: o build de
+          # produção estoura o heap na fase de type-check nos runners PÚBLICOS do
+          # GitHub (`FATAL ERROR: Ineffective mark-compacts near heap limit`).
+          # O repositório original não sente porque os jobs pesados dele podem ir
+          # para o executor próprio (ver `EXECUTOR_PROPRIO` no CLAUDE.md); aqui
+          # eles rodam no runner público.
+          #
+          # Medido com CONTROLE: um PR do Dependabot, sem uma linha de código
+          # nosso, estoura exatamente igual — então não é o nosso diff que não
+          # cabe, é o build do projeto contra o teto padrão do Node.
+          #
+          # O `ci.yml` já declara 6144 para o typecheck (linha ~254); isto é o
+          # mesmo remédio no passo que faltava.
+          NODE_OPTIONS: --max-old-space-size=8192
           NEXT_TELEMETRY_DISABLED: "1"
           # `off`, NÃO vazio. Vazio seleciona o Sentry DA COMUNIDADE — está
           # escrito em lib/sentry/dsn.ts:8-10, e é o default de propósito num
