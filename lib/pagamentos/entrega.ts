@@ -119,3 +119,52 @@ export async function prepararEntrega(
 
   return { token, url: urlDaEntrega(token), expiraEm, arquivos: arquivos.length };
 }
+
+/**
+ * REENVIAR: revoga o endereço atual e devolve um NOVO.
+ *
+ * ## Por que gerar outro em vez de mostrar o mesmo
+ *
+ * Porque o token em claro não existe em lugar nenhum — o banco guarda só o
+ * SHA-256 dele, e hash não volta. Não há "mostrar o mesmo link": ou se gera
+ * outro, ou não há reenvio.
+ *
+ * E isso é melhor do que a alternativa. Quando alguém pede o link de novo, a
+ * razão mais comum é que o primeiro se perdeu — e um endereço perdido pode ter
+ * sido perdido NUM GRUPO. Revogar fecha essa porta: o link antigo para de abrir
+ * no mesmo instante em que o novo nasce.
+ *
+ * ## O que isto NÃO conserta
+ *
+ * A entrega revogada some da página antiga, e quem estiver com ela recebe a
+ * mesma recusa de link vencido. Se o comprador legítimo tinha o link antigo
+ * guardado, ele precisa do novo — que é exatamente o que esta função devolve a
+ * quem opera.
+ */
+export async function reenviarEntrega(
+  admin: SupabaseClient,
+  organizationId: string,
+  orderId: string,
+): Promise<EntregaCriada | { motivo: "sem_arquivo" | "falhou" }> {
+  // Revoga a viva ANTES de criar a nova: o índice único parcial
+  // `order_deliveries_uma_viva_por_pedido` recusaria a segunda enquanto a
+  // primeira estivesse de pé — e é essa trava que garante que nunca existam
+  // dois endereços válidos para o mesmo pedido.
+  const { error: erroDaRevogacao } = await admin
+    .from("order_deliveries")
+    .update({ revogada_em: new Date().toISOString(), motivo_revogacao: "reenviada" })
+    .eq("organization_id", organizationId)
+    .eq("order_id", orderId)
+    .is("revogada_em", null);
+
+  if (erroDaRevogacao) return { motivo: "falhou" };
+
+  const nova = await prepararEntrega(admin, organizationId, orderId);
+  // `ja_entregue` aqui seria defeito: acabamos de revogar a viva, então
+  // `prepararEntrega` não pode ter encontrado nenhuma. Se encontrou, alguém
+  // criou uma no meio — tratar como falha é a saída honesta.
+  if ("motivo" in nova) {
+    return { motivo: nova.motivo === "sem_arquivo" ? "sem_arquivo" : "falhou" };
+  }
+  return nova;
+}

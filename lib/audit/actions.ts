@@ -1183,6 +1183,11 @@ export const AUDIT_ACTIONS = [
   // consequência pior quando falta: sem o aviso o cliente paga e a compra nunca
   // é confirmada nem entregue.
   "pagamento.webhook_conferido",
+  // Alguém da equipe gerou um endereço NOVO de entrega para um pedido pago, e o
+  // anterior foi revogado no mesmo ato. É o registro que responde "quem mexeu
+  // no acesso deste comprador?" — e o que denuncia reenvio em série, já que
+  // cada um arrebenta o link que o comprador legítimo tinha.
+  "pagamento.entrega_reenviada",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */

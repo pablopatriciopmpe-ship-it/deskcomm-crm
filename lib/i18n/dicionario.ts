@@ -16151,6 +16151,15 @@ export const DICIONARIO: Traducoes = {
   "recusado": { es: "rechazado" },
   "Recusado.": { es: "Rechazado." },
 
+  // ── Reenvio do acesso da entrega ──────────────────────────────────────
+  "Acesso novo enviado na conversa.": { es: "Acceso nuevo enviado en la conversación." },
+  "Acesso novo gerado. O aviso não saiu — mande o endereço por outro caminho.": { es: "Acceso nuevo generado. El aviso no salió — envía la dirección por otro medio." },
+  "Endereço novo, válido por 30 dias. O anterior parou de funcionar agora.": { es: "Dirección nueva, válida por 30 días. La anterior dejó de funcionar ahora." },
+  "Reenviar acesso": { es: "Reenviar acceso" },
+  "Este pedido ainda não está pago.": { es: "Este pedido todavía no está pagado." },
+  "Este pedido não tem arquivo para entregar.": { es: "Este pedido no tiene archivo para entregar." },
+  "Aqui está o acesso ao seu produto:": { es: "Aquí está el acceso a tu producto:" },
+
   // ── Arquivos entregáveis do produto (o que o comprador recebe) ────────
   "Arquivo adicionado": { es: "Archivo añadido" },
   "Arquivo removido": { es: "Archivo eliminado" },
