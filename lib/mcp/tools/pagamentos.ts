@@ -13,6 +13,24 @@
  * modelo recebe de volta a confirmação e o VALOR — nunca a URL. Ele não tem
  * como recopiá-la errado porque não a tem.
  *
+ * ## Por que o contato e a conversa são CONFERIDOS, não aceitos
+ *
+ * Os dois chegam pelo modelo, e são usados para coisas diferentes: o contato
+ * vira dono do pedido (e da ENTREGA), a conversa recebe o link. Aceitar os dois
+ * soltos permitia o pior erro possível — **cobrar uma pessoa e entregar a
+ * outra**: o modelo passa o contato B durante a conversa A, a A paga pelo link
+ * que recebeu, e o pedido com o arquivo fica no B.
+ *
+ * Duas conferências fecham isso:
+ *
+ *  1. quando existe CONTATO DO TURNO (`ctx.contatoDoTurno`, que só a ponte do
+ *     atendimento injeta), ele vence: contato diferente é recusa, não correção
+ *     silenciosa — corrigir calado esconderia um modelo que está confundindo
+ *     pessoas;
+ *  2. a conversa tem de ser DAQUELE contato, na nossa organização. Isto vale
+ *     também fora do atendimento (token de terceiro), onde não há contato do
+ *     turno para comparar.
+ *
  * ## O que ela NÃO faz
  *
  * Não confirma pagamento e não entrega produto. Quem confirma é o worker, e só
@@ -61,6 +79,35 @@ export const crmCobrarProduto: McpToolDefinition<typeof cobrarShape> = {
   requiresRole: "ai_operator",
   requiresScope: "mcp:write",
   handler: async (input, ctx) => {
+    // ── As duas conferências do cabeçalho, antes de qualquer escrita ──────
+    if (ctx.contatoDoTurno && ctx.contatoDoTurno !== input.contact_id) {
+      return {
+        cobranca_criada: false,
+        motivo: "contato_de_outra_conversa",
+        mensagem:
+          "o `contact_id` que você passou não é o do cliente deste atendimento. NÃO tente de " +
+          "novo com outro id: cobre o contato desta conversa.",
+      };
+    }
+
+    const { data: conversa } = await ctx.supabase
+      .from("conversations")
+      .select("contact_id")
+      .eq("id", input.conversation_id)
+      .eq("organization_id", ctx.organizationId)
+      .maybeSingle();
+
+    const donoDaConversa = (conversa as { contact_id: string | null } | null)?.contact_id ?? null;
+    if (donoDaConversa !== input.contact_id) {
+      return {
+        cobranca_criada: false,
+        motivo: "conversa_de_outro_contato",
+        mensagem:
+          "esta conversa não é do contato que você quer cobrar. NÃO mande link nenhum: cobre o " +
+          "contato desta conversa, ou chame alguém da equipe.",
+      };
+    }
+
     const r = await cobrarProduto(ctx.supabase, {
       organizationId: ctx.organizationId,
       contactId: input.contact_id,

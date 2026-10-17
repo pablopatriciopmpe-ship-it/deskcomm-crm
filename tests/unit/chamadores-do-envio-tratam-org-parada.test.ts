@@ -35,6 +35,10 @@ const CHAMADORES: Record<string, string> = {
   "lib/campanhas/acoes.ts": "ação disparada da tela: o erro sobe para quem clicou, sem estado gravado",
   "lib/mcp/tools/messages.ts": "ferramenta MCP: o erro sobe ao cliente; o token da org parada já é recusado antes",
   "lib/mcp/tools/start-conversation.ts": "ferramenta MCP: o erro sobe ao cliente; o token da org parada já é recusado antes",
+  "lib/mcp/tools/pagamentos.ts":
+    "ferramenta MCP: o 403 vira `cobranca_criada: false` com motivo `envio_falhou`, e o token da org parada já é recusado antes. A cobrança criada fica `pending` e a reconciliação diária não a toca (ela só reemite aviso que CHEGOU) — nada sobrevive à reativação como enviado",
+  "lib/pagamentos/confirmar.handler.ts":
+    "o catch devolve `entregue_sem_aviso`: a ENTREGA já existe e o link vale 30 dias, então nada se perde com a suspensão — só o aviso não sai. É de propósito, e é o que torna possível confirmar pagamento de org suspensa (o cliente final pagou): quem opera vê o pedido pago e reenvia quando a organização voltar",
 };
 
 const PORTA = "app/api/v1/messages/_handler.ts";

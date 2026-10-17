@@ -49,7 +49,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { autorizaCron } from "@/lib/auth/cron-auth";
 import { logger } from "@/lib/logger";
-import { STATUS_OPERANTE } from "@/lib/organizacao/operante";
+import { ehOperante, statusDaOrgEmbutida, STATUS_OPERANTE } from "@/lib/organizacao/operante";
 import { conferirPeloRecibo, ErroDaInfinitePay } from "@/lib/pagamentos/provedores/infinitepay";
 import { EVENTO_AVISO_DE_PAGAMENTO, PROVEDOR_INFINITEPAY } from "@/lib/pagamentos/vocabulario";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -150,9 +150,17 @@ export async function sondarRecibos(admin: SupabaseClient, requestId: string): P
     throw new Error(`leitura das contas falhou: ${erroDasContas.message}`);
   }
 
+  // O `!inner` acima já cortou as paradas na consulta. O `ehOperante` linha a
+  // linha é o CINTO que `lib/organizacao/operante.ts` recomenda junto: se o
+  // embed vier com forma inesperada, a sonda não sai para fora por engano.
   const orgs = [
     ...new Set(
-      ((contas ?? []) as Array<{ organization_id: string }>).map((c) => c.organization_id),
+      ((contas ?? []) as Array<{
+        organization_id: string;
+        organizations?: { status?: string | null } | Array<{ status?: string | null }> | null;
+      }>)
+        .filter((c) => ehOperante(statusDaOrgEmbutida(c.organizations)))
+        .map((c) => c.organization_id),
     ),
   ].sort();
 

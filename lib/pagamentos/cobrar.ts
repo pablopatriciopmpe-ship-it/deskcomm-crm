@@ -26,6 +26,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logger } from "@/lib/logger";
+import { randomId } from "@/lib/random-id";
 import { criarCobranca as criarNoProvedor, ErroDaInfinitePay } from "./provedores/infinitepay";
 import { urlDoWebhook } from "./token-do-webhook";
 import { PROVEDOR_INFINITEPAY } from "./vocabulario";
@@ -127,7 +128,7 @@ export async function cobrarProduto(
       // Namespace NEUTRO de propósito: o produto é white-label, e o nome da
       // casa num identificador apareceria no banco de quem instala com a marca
       // dele. "interno" diz o que importa — este pedido não veio de conector.
-      external_id: `interno:${crypto.randomUUID()}`,
+      external_id: `interno:${randomId()}`,
       status: "pending",
       total_cents: total,
       currency: "BRL",

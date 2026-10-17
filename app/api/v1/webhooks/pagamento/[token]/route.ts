@@ -50,6 +50,29 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Lê o corpo até o teto e desiste no byte que o estoura. Devolve `null` quando
+ * estourou. Ver o chamador: o `content-length` não é promessa.
+ */
+async function lerCorpoComTeto(req: Request, teto: number): Promise<string | null> {
+  if (!req.body) return "";
+  const leitor = req.body.getReader();
+  const pedacos: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await leitor.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > teto) {
+      await leitor.cancel();
+      return null;
+    }
+    pedacos.push(Buffer.from(value));
+  }
+  return Buffer.concat(pedacos).toString("utf8");
+}
+
 const LIMITE_DO_CORPO = 65_536;
 const RECUSAS_POR_MINUTO = 120;
 /**
@@ -122,8 +145,12 @@ export async function POST(req: NextRequest, { params }: Rota) {
     return naoExiste();
   }
 
-  const cru = await req.text();
-  if (Buffer.byteLength(cru, "utf8") > LIMITE_DO_CORPO) {
+  // `req.text()` carregaria o corpo INTEIRO antes de qualquer medida, e o
+  // `content-length` conferido lá em cima pode vir ausente ou mentiroso —
+  // requisição `chunked` passa por ele. Então a leitura é com teto: ela
+  // interrompe o fluxo no byte que estoura, e nada além disso é acumulado.
+  const cru = await lerCorpoComTeto(req, LIMITE_DO_CORPO);
+  if (cru === null) {
     return fail("payload_too_large", "Aviso grande demais.", 413, { requestId });
   }
 

@@ -27,7 +27,12 @@
 import { createHash } from "node:crypto";
 
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 
+import { checkRateLimit } from "@/lib/ai/dispatcher/rate-limit";
+import { traduzir } from "@/lib/i18n/dicionario";
+import { idiomaDoVisitante } from "@/lib/i18n/idiomaAnonimo";
+import { ipDoCliente } from "@/lib/http/ip-do-cliente";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +44,16 @@ export const metadata: Metadata = {
 
 /** Vida da URL assinada: o bastante para o navegador baixar, não para circular. */
 const VALIDADE_DO_LINK_SEGUNDOS = 15 * 60;
+
+/**
+ * O freio desta página. Ela é PÚBLICA e cada abertura válida custa: duas
+ * leituras, uma URL assinada por arquivo e uma escrita no contador. Sem teto,
+ * quem tenha um link legítimo nas mãos (ou um robô com ele) gera milhares de
+ * assinaturas e escritas por minuto. A doutrina da casa exige teto em rota
+ * pública, e o número é generoso de propósito: quem comprou recarrega a página
+ * para renovar os links de 15 minutos, e isso tem de continuar funcionando.
+ */
+const ABERTURAS_POR_MINUTO = 60;
 
 interface Arquivo {
   nome: string;
@@ -103,7 +118,12 @@ async function carregar(token: string): Promise<Arquivo[] | null> {
   await admin
     .from("order_deliveries")
     .update({ downloads: entrega.downloads + 1, ultimo_download_em: new Date().toISOString() })
-    .eq("id", entrega.id);
+    .eq("id", entrega.id)
+    // A organização SAI DA LINHA que acabou de ser lida — ela é conhecida aqui.
+    // Cadeia de serviço que filtra só por id deixa um id adivinhado alcançar
+    // linha de outra organização; a cerca `admin-client-exige-filtro-de-tenant`
+    // cobra isto em toda escrita por chave.
+    .eq("organization_id", entrega.organization_id);
 
   return saida;
 }
@@ -114,15 +134,38 @@ export default async function PaginaDaEntrega({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
+
+  // Quem abre esta página é o COMPRADOR, sem sessão e sem perfil nosso — então
+  // o idioma vem do navegador dele (mesma cadeia das telas de login).
+  const idioma = await idiomaDoVisitante(null);
+  const t = (texto: string) => traduzir(texto, idioma);
+
+  // O balde é por IP, nunca por token: por token, quem tem um link válido
+  // continuaria podendo bater à vontade, que é justamente o abuso. Sem IP
+  // resolvido (proxy mal configurado), o balde é único — teto global em vez de
+  // nenhum teto.
+  const cabecalhos = await headers();
+  const balde = ipDoCliente(cabecalhos) ?? "sem-ip";
+  const teto = await checkRateLimit(`entrega-pagina:${balde}`, ABERTURAS_POR_MINUTO, 60);
+  if (!teto.allowed) {
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-3 px-6 py-16">
+        <h1 className="text-2xl font-semibold">{t("Muitas tentativas")}</h1>
+        <p className="text-muted-foreground">{t("Espere um minuto e recarregue a página.")}</p>
+      </main>
+    );
+  }
+
   const arquivos = await carregar(token);
 
   if (arquivos === null) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-3 px-6 py-16">
-        <h1 className="text-2xl font-semibold">Este link não vale mais</h1>
+        <h1 className="text-2xl font-semibold">{t("Este link não vale mais")}</h1>
         <p className="text-muted-foreground">
-          Ele pode ter expirado ou sido substituído por outro. Fale com quem te vendeu para receber
-          um link novo.
+          {t(
+            "Ele pode ter expirado ou sido substituído por outro. Fale com quem te vendeu para receber um link novo.",
+          )}
         </p>
       </main>
     );
@@ -131,11 +174,13 @@ export default async function PaginaDaEntrega({
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-6 px-6 py-16">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">Seu acesso está pronto</h1>
+        <h1 className="text-2xl font-semibold">{t("Seu acesso está pronto")}</h1>
         <p className="text-muted-foreground">
           {arquivos.length === 0
-            ? "Seu pagamento foi confirmado. Este pedido não tem arquivo para baixar."
-            : "Pagamento confirmado. Baixe abaixo — cada link vale por alguns minutos; recarregue a página se precisar de novo."}
+            ? t("Seu pagamento foi confirmado. Este pedido não tem arquivo para baixar.")
+            : t(
+                "Pagamento confirmado. Baixe abaixo — cada link vale por alguns minutos; recarregue a página se precisar de novo.",
+              )}
         </p>
       </header>
 
