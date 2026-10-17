@@ -855,6 +855,17 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "endpoint oficial da Google Meet REST API (`POST /v2/spaces`, em `lib/agenda/google/transport.ts`): é o DESTINO do request que cria a sala de reunião com acesso aberto (#2063), com o token da própria organização. Diferente de `meet.google.com` — que é o LINK de convite, e por isso entra como PLATAFORMA em CONFERÊNCIA —, este é host que o produto BUSCA: trocar pelo domínio do revendedor faria a chamada não chegar a lugar nenhum, e a sala nunca seria criada.",
   },
+  // ── cobrança avulsa por PIX: a organização cobra o cliente dela (0683) ──
+  "api.checkout.infinitepay.io": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "endpoint oficial do Checkout Integrado da InfinitePay (`POST /links`, em `lib/pagamentos/provedores/infinitepay.ts`): é o DESTINO do request que cria a cobrança, identificado pelo `handle` da própria organização — a API não usa chave. Trocar pelo domínio do revendedor faria a cobrança não nascer, e nenhuma venda aconteceria.",
+  },
+  "recibo.infinitepay.io": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "o recibo PÚBLICO da transação, que `conferirPeloRecibo` BUSCA para confirmar o pagamento. O host é fixo de propósito e não pode ser configurável: o `receipt_url` chega dentro de um aviso que a InfinitePay NÃO assina, então aceitar endereço de fora seria deixar quem forja o aviso escolher o host que o servidor visita. É o pino anti-SSRF da conferência, não um endereço de marca.",
+  },
   // ── localização compartilhada: o link que abre o pino do cliente ──
   "maps.google.com": {
     categoria: "PLATAFORMA",

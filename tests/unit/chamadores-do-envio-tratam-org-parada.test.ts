@@ -36,6 +36,12 @@ const CHAMADORES: Record<string, string> = {
   "lib/campanhas/acoes.ts": "ação disparada da tela: o erro sobe para quem clicou, sem estado gravado",
   "lib/mcp/tools/messages.ts": "ferramenta MCP: o erro sobe ao cliente; o token da org parada já é recusado antes",
   "lib/mcp/tools/start-conversation.ts": "ferramenta MCP: o erro sobe ao cliente; o token da org parada já é recusado antes",
+  "app/api/v1/orders/[id]/entrega/route.ts":
+    "o catch devolve `avisado: false` e a URL mesmo assim — a rota existe JUSTAMENTE para o caso em que o aviso não sai (janela fechada, contato que recusa, org suspensa), e quem opera entrega o endereço por outro caminho. Nada fica gravado como enviado, e o endereço novo vale 30 dias independente do aviso",
+  "lib/mcp/tools/pagamentos.ts":
+    "ferramenta MCP: o 403 vira `cobranca_criada: false` com motivo `envio_falhou`, e o token da org parada já é recusado antes. A cobrança criada fica `pending` e a reconciliação diária não a toca (ela só reemite aviso que CHEGOU) — nada sobrevive à reativação como enviado",
+  "lib/pagamentos/confirmar.handler.ts":
+    "o catch devolve `entregue_sem_aviso`: a ENTREGA já existe e o link vale 30 dias, então o pagamento não se perde com a suspensão — só o aviso não sai, e o pedido pago aparece no painel do contato. É o que torna possível confirmar pagamento de org suspensa (o cliente final pagou). ⚠️ O REENVIO DO LINK AINDA NÃO EXISTE: nenhuma tela lê order_deliveries e o token é hash no banco, então hoje o comprador fica sem o endereço até alguém construir o reenvio",
 };
 
 const PORTA = "app/api/v1/messages/_handler.ts";

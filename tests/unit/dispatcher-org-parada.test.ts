@@ -28,6 +28,7 @@ import { pinoReintentoHandler } from "@/lib/channels/zernio/pino-reintento.handl
 import { automationRulesHandler } from "@/lib/automation/engine.handler";
 import { campanhaRespostaHandler } from "@/lib/campanhas/resposta.handler";
 import { cobrancaSinalHandler } from "@/lib/cobranca/sinal.handler";
+import { confirmarPagamentoHandler } from "@/lib/pagamentos/confirmar.handler";
 import { conversaoDeVendaHandler } from "@/lib/conversoes/envio.handler";
 import { conversaoDeQualificacaoHandler } from "@/lib/conversoes/qualificacao.handler";
 import { conversaoDeEtapaMetaHandler } from "@/lib/conversoes/etapa-meta.handler";
@@ -66,6 +67,13 @@ const RODA: EventHandler[] = [
   // #2591 — tarefa interna para o dono da carteira: escrita no próprio banco,
   // sem rede, roda com a organização parada (mesma régua do aviso de etapa).
   avisoAoDonoDaCarteira,
+  // 0693 — sai para fora (confere o recibo) e manda mensagem, então seria
+  // candidato natural a `pula`. RODA porque QUEM PAGOU FOI O CLIENTE FINAL, que
+  // não tem nada a ver com a mensalidade que a empresa deve à instalação:
+  // `skipped` conta como consumido, então pular perdia o aviso para sempre e a
+  // cobrança ficava `pending` sem ninguém saber. A separação que importa é
+  // dentro do handler — suspensa segue, redigida e arquivada não.
+  confirmarPagamentoHandler,
 ];
 
 const PULA: EventHandler[] = [

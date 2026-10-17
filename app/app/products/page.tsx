@@ -18,7 +18,7 @@ import { COLUNAS_DO_PRODUTO, type Produto } from "@/lib/schemas/produtos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-import { ProdutosClient } from "./_client";
+import { ProdutosClient, type ArquivoDoProduto } from "./_client";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Produtos" };
@@ -113,6 +113,33 @@ export default async function ProdutosPage({
     }
   }
 
+  // Os ENTREGÁVEIS de cada produto listado. Sem URL assinada: quem vende não
+  // precisa baixar o que acabou de subir, e assinar 500 MB por linha da lista
+  // seria pagar por um link que ninguém abre. O comprador recebe a URL assinada
+  // na página de entrega, que é o lugar dela.
+  const arquivosPorProduto: Record<string, ArquivoDoProduto[]> = {};
+  if (produtos.length > 0) {
+    const { data: arquivos } = await createAdminClient()
+      .from("catalog_product_files")
+      .select("id, product_id, nome_arquivo, mime, bytes")
+      .eq("organization_id", activeOrg.orgId)
+      .in(
+        "product_id",
+        produtos.map((x) => x.id),
+      )
+      .eq("ativo", true)
+      .order("position", { ascending: true });
+
+    for (const linha of (arquivos ?? []) as Array<ArquivoDoProduto & { product_id: string }>) {
+      (arquivosPorProduto[linha.product_id] ??= []).push({
+        id: linha.id,
+        nome_arquivo: linha.nome_arquivo,
+        mime: linha.mime,
+        bytes: linha.bytes,
+      });
+    }
+  }
+
   return (
     <ProdutosClient
       inicial={produtos}
@@ -121,6 +148,7 @@ export default async function ProdutosPage({
       porPagina={PRODUTOS_POR_PAGINA}
       buscaInicial={busca}
       urlsDasFotos={urlsDasFotos}
+      arquivosPorProduto={arquivosPorProduto}
       podeEditar={podeEditar}
       textos={{
         titulo: t("Produtos"),
