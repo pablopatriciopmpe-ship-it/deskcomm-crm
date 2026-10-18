@@ -20,6 +20,9 @@ import { createClient } from "@/lib/supabase/server";
 
 import { ProdutosClient } from "./_client";
 
+// CONTROLE DE AMBIENTE (temporario): PR trivial a partir da main PURA, para
+// medir se o e2e deste repositorio falha por causa do AMBIENTE ou por causa do
+// nosso codigo. Esta branch e descartavel.
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Produtos" };
 
