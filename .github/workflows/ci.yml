@@ -25,6 +25,20 @@ on:
 # continua por job em publish-image.yml — mesma regra, menor escopo que precisa.
 permissions:
   contents: read
+  # ⚠️ DIVERGÊNCIA DESTA CÓPIA, e a razão é a visibilidade do repositório.
+  #
+  # O passo "A prévia deste PR mediu a main de agora?" chama
+  # `gh api repos/.../pulls/<n>/files`. Esse endpoint exige `pull-requests:
+  # read`; `contents: read` cobre o `compare`, mas não cobre os arquivos do PR.
+  #
+  # No repositório ORIGINAL, que é público, a chamada passa mesmo sem o escopo.
+  # Aqui, num repositório PRIVADO, ela volta 403 — e o passo morria em silêncio,
+  # porque o shell do GitHub é `bash -e`: o `pipefail` transformava o 403 em
+  # falha da pipeline e o `-e` matava o script antes de qualquer saída. Treze
+  # segundos, nenhuma linha de log, e um check vermelho que não dizia nada.
+  #
+  # Escopo de LEITURA, e só no que já era lido.
+  pull-requests: read
 
 # ── Uma rodada por PR: o push novo cancela a antiga — POR JOB, nunca por workflow
 #
