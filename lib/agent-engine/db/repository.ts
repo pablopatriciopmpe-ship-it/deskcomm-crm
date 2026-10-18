@@ -126,6 +126,12 @@ export type InboxKind =
   // dois dispara pela MESMA lista (`lib/tarefas/preferencia-de-lembrete.ts`).
   | 'task_due'
   | 'task_overdue'
+  // (migration 0695) A conferência do recibo do provedor parou de reconhecer a
+  // página dele. Enquanto durar, pagamento que entra NÃO é confirmado e nenhum
+  // produto é entregue — e isso quebra EM SILÊNCIO, que é a razão de o aviso
+  // existir. Um aberto por organização (índice único parcial); a sonda diária
+  // abre e fecha sozinha.
+  | 'conferencia_do_recibo_quebrada'
   | 'other';
 
 export interface InboxItemRow {

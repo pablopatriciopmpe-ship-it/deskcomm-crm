@@ -121,6 +121,9 @@ beforeAll(() => {
       v_pessoa uuid;
       v_lote uuid;
       v_regra uuid;
+      v_pedido uuid;
+      v_produto uuid;
+      v_cred uuid;
     begin
       foreach v_org in array array['${ORG_A}'::uuid, '${ORG_B}'::uuid] loop
         select id into v_sess from public.channel_sessions where organization_id = v_org limit 1;
@@ -340,6 +343,72 @@ beforeAll(() => {
           insert into public.catalog_products
             (organization_id, codigo, nome, preco_cents)
             values (v_org, 'RLS-' || v_org::text, 'Produto de invariante', 100);
+        end if;
+        select id into v_produto from public.catalog_products
+          where organization_id = v_org limit 1;
+
+        -- ─── O CAMINHO DO DINHEIRO (migrations 0693/0694/0696) ───────────────
+        --
+        -- Cinco tabelas que guardam, juntas, QUEM RECEBE o dinheiro das vendas,
+        -- QUANTO foi cobrado de quem, e O ARQUIVO que o comprador pagou para
+        -- ter. Se a policy vazar aqui, o vizinho lê a conta de recebimento da
+        -- outra empresa, o faturamento dela, e o caminho do produto que ela
+        -- vende -- por isso elas entram no invariante comportamental em vez de
+        -- ficarem só com a RLS ligada.
+        --
+        -- (sem crase nesta prosa: o bloco inteiro e um template literal de JS.)
+        if not exists (select 1 from public.payment_provider_credentials where organization_id = v_org) then
+          insert into public.payment_provider_credentials
+            (organization_id, provider, label, handle, webhook_path_token_sha256)
+            values (v_org, 'infinitepay', 'InfinitePay', 'loja-' || replace(v_org::text, '-', ''),
+                    -- O CHECK exige 64 hex. md5 duas vezes da exatamente 64, e
+                    -- md5 e NUCLEO do Postgres: digest() viria do pgcrypto, que
+                    -- no Supabase mora no schema extensions -- dependencia que
+                    -- este semeador nao precisa ter.
+                    -- (sem crase nesta prosa: o bloco inteiro e um template literal de JS.)
+                    md5(v_org::text) || md5(v_org::text || 'w'));
+        end if;
+        select id into v_cred from public.payment_provider_credentials
+          where organization_id = v_org limit 1;
+
+        if not exists (select 1 from public.orders where organization_id = v_org
+                         and external_id like 'rls-invariante-%') then
+          insert into public.orders
+            (organization_id, external_id, external_provider, contact_id, status,
+             total_cents, ordered_at)
+            values (v_org, 'rls-invariante-' || v_org::text, 'external', v_contact,
+                    'pending', 12990, now());
+        end if;
+        select id into v_pedido from public.orders
+          where organization_id = v_org and external_id like 'rls-invariante-%' limit 1;
+
+        if not exists (select 1 from public.payment_charges where organization_id = v_org) then
+          insert into public.payment_charges
+            (organization_id, order_id, credential_id, handle_do_recebedor, provider, amount_cents)
+            values (v_org, v_pedido, v_cred, 'loja-' || replace(v_org::text, '-', ''),
+                    'infinitepay', 12990);
+        end if;
+
+        if not exists (select 1 from public.order_items where organization_id = v_org) then
+          insert into public.order_items
+            (organization_id, order_id, product_id, nome, codigo, quantidade, preco_unitario_cents)
+            values (v_org, v_pedido, v_produto, 'Produto de invariante',
+                    'RLS-' || v_org::text, 1, 12990);
+        end if;
+
+        if not exists (select 1 from public.catalog_product_files where organization_id = v_org) then
+          insert into public.catalog_product_files
+            (organization_id, product_id, storage_path, nome_arquivo, mime, bytes)
+            values (v_org, v_produto,
+                    v_org::text || '/' || v_produto::text || '/' || gen_random_uuid()::text || '.pdf',
+                    'curso.pdf', 'application/pdf', 1024);
+        end if;
+
+        if not exists (select 1 from public.order_deliveries where organization_id = v_org) then
+          insert into public.order_deliveries
+            (organization_id, order_id, token_sha256, canal, entregue_em, expira_em)
+            values (v_org, v_pedido, md5(v_pedido::text) || md5(v_pedido::text || 'e'),
+                    'pagina', now(), now() + interval '30 days');
         end if;
 
         -- crm_tasks (migration 0210): o que o time combinou fazer, com prazo.
@@ -655,6 +724,24 @@ export const TABLES = [
   // exige `manager` — esse segundo eixo é medido em
   // `tests/invariants/catalogo-so-gestor-muda-preco.test.ts`, não aqui.
   "catalog_products",
+  // migrations 0693/0694/0696 — o caminho do dinheiro. `payment_provider_
+  // credentials` guarda PARA ONDE VAI o dinheiro das vendas (a conta do
+  // provedor); `payment_charges`, quanto foi cobrado de quem e se foi pago;
+  // `order_items`, o que foi vendido com o preço praticado; `catalog_product_
+  // files`, o caminho do arquivo ENTREGÁVEL no bucket privado; e
+  // `order_deliveries`, a quem já foi entregue. Vazamento aqui é o vizinho
+  // lendo o faturamento e o produto da outra empresa.
+  //
+  // A leitura destas cinco é org-scoped sem gate de papel; os eixos de PAPEL
+  // ficam fora deste arquivo: quem só `admin` muda (a conta de recebimento) é
+  // medido em `app/api/v1/pagamentos/conta/route.test.ts`, e a escrita do
+  // arquivo entregável, que exige `manager`, em
+  // `app/api/v1/products/[id]/arquivos/route.test.ts`.
+  "payment_provider_credentials",
+  "payment_charges",
+  "order_items",
+  "catalog_product_files",
+  "order_deliveries",
   // migration 0210 — as tarefas do CRM. A leitura é org-scoped sem gate de papel
   // (o `viewer` precisa ver o que o time combinou); a ESCRITA exige `agent`, e
   // esse segundo eixo NÃO é medido aqui — o usuário semeado é `agent`, então o

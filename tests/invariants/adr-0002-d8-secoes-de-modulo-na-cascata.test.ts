@@ -108,7 +108,7 @@ function anonimizar(contato: string): void {
 }
 
 describe("D8 — a anonimização alcança as seções de módulo declaradas", () => {
-  it("o mecanismo existe e nasce com o registro VAZIO (nenhum módulo declara ainda)", () => {
+  it("o mecanismo existe, e só os módulos DECLARADOS aqui usam o registro", () => {
     expect(sql(`select (to_regclass('public.modulo_secoes_lgpd') is not null)::text;`)).toBe("true");
     expect(
       sql(`select count(*) from pg_proc where proname = 'fn_lgpd_redigir_secoes_de_modulo'
@@ -119,9 +119,28 @@ describe("D8 — a anonimização alcança as seções de módulo declaradas", (
              where c.relname = 'contacts' and t.tgname = 'trg_lgpd_secoes_de_modulo'
                and not t.tgisinternal;`),
     ).toBe("1");
-    // O registro nasce vazio de propósito — e é a prova de que a migration não inventou
-    // dado de LGPD para um módulo que não pediu (honorários, 0480).
-    expect(sql(`select count(*) from public.modulo_secoes_lgpd;`)).toBe("0");
+    // ⚠️ ESTA ASSERÇÃO ERA `count = 0`, e ela morreu de sucesso.
+    //
+    // O que ela protegia: que uma migration não INVENTASSE declaração de LGPD
+    // para um módulo que não pediu (honorários, 0480). Enquanto ninguém
+    // declarava, "o registro está vazio" dizia isso com uma linha.
+    //
+    // A 0694 trouxe o primeiro declarante real — o módulo de pagamentos, que
+    // precisa redigir o checkout e o recibo (instrumento de pagamento vivo e
+    // página que nomeia o pagador) e derrubar o acesso da entrega pondo o hash
+    // do token em nulo. Com um declarante legítimo, `count = 0` passou a ser
+    // falso sobre um produto correto.
+    //
+    // A proteção continua, em forma de LISTA: toda declaração que existir tem
+    // de estar escrita aqui. Quem acrescentar uma na migration sem passar por
+    // este arquivo fica vermelho — que é exatamente a revisão que a ADR quer.
+    expect(
+      sql(`select coalesce(string_agg(modulo || ':' || tabela, ', ' order by modulo, tabela), '(vazio)')
+             from public.modulo_secoes_lgpd;`),
+      "declaração de LGPD nova no registro: acrescente-a a esta lista no MESMO " +
+        "commit da migration, com o porquê — o registro não é lugar de passar " +
+        "despercebido",
+    ).toBe("pagamentos:order_deliveries, pagamentos:payment_charges");
     // E o guard é o da D8, lido do catálogo (não do arquivo): o corpo tem de resolver a
     // tabela com to_regclass antes de qualquer comando.
     expect(sql(`

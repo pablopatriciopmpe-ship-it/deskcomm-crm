@@ -82,6 +82,17 @@ export const POLITICAS_DE_AVISO = {
   reactivation_expired: { refs: ["organization"], orientacao: "Revise no Radar se ainda cabe retomar os negócios indicados." },
   capabilities_missing: { refs: ["conversation"], orientacao: "Peça ao gestor para revisar as ferramentas habilitadas para o assistente deste atendimento." },
   message_send_stuck: { refs: ["conversation"], orientacao: "Confira a resposta que não chegou antes de decidir se precisa enviar novamente." },
+  // A sonda nasce com `ref_kind: payment_charge` apontando para a cobrança que
+  // serviu de amostra, mas o aviso NÃO é sobre aquela venda — é sobre a
+  // conferência ter parado de funcionar para todas. Por isso a orientação manda
+  // olhar a conta, e o destino geral é a tela de receber pagamentos, que é onde
+  // se confere o que a página do provedor exige.
+  conferencia_do_recibo_quebrada: {
+    refs: [],
+    orientacao:
+      "Enquanto isto durar, pagamento que entrar não é confirmado e nenhum produto é entregue — o dinheiro cai na conta do provedor normalmente. Peça a quem administra para conferir a conta de pagamento.",
+    geral: { papel: "admin", href: "/app/settings/pagamentos", rotulo: "Conferir a conta de pagamento" },
+  },
   midia_nao_lida: { refs: [], orientacao: "Peça ao gestor para revisar o provedor e as credenciais de leitura de fotos e áudios.", geral: { papel: "manager", href: "/app/ai/providers", rotulo: "Revisar provedores de IA" } },
   channel_template_review: { refs: [], orientacao: "Confira os modelos na conexão WhatsApp via Parceiro. Este aviso não identifica um modelo específico.", geral: { papel: "admin", href: "/app/connections?aba=parceiro&sub=templates", rotulo: "Revisar modelos do canal" } },
   channel_number_alert: { refs: ["channel_session"], orientacao: "Peça a quem administra para revisar a situação do número nas conexões.", geral: CONEXOES },
