@@ -737,7 +737,12 @@ export const TABLES = [
   // medido em `app/api/v1/pagamentos/conta/route.test.ts`, e a escrita do
   // arquivo entregável, que exige `manager`, em
   // `app/api/v1/products/[id]/arquivos/route.test.ts`.
-  "payment_provider_credentials",
+  // ⚠️ `payment_provider_credentials` NÃO entra aqui, e a razão é que este molde
+  // mede com um usuário `agent`: a policy dela exige `manager`, então o controle
+  // positivo leria ZERO da própria organização e reprovaria com a policy CERTA.
+  // A prova dela, com os três eixos (tenant, papel e controle positivo), está em
+  // `tests/invariants/pagamentos-conta-so-gestor-le.test.ts` e é declarada em
+  // PROVA_PROPRIA, abaixo.
   "payment_charges",
   "order_items",
   "catalog_product_files",

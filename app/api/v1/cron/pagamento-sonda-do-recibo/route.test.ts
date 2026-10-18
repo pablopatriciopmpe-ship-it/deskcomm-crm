@@ -138,7 +138,12 @@ describe("quem pode chamar", () => {
 });
 
 describe("quando a conferência quebra", () => {
-  it("abre aviso crítico apontando a cobrança que serve de amostra", async () => {
+  it("abre aviso crítico SEM referência — é isso que lhe dá o botão de reparo", async () => {
+    // O aviso nascia apontando para a cobrança da amostra, e o resolvedor de
+    // destino manda para "contexto indisponível" quando o `ref_kind` não está na
+    // lista da política: o destino GERAL (a tela de receber pagamentos) só é
+    // alcançado quando NÃO há referência. Com a referência posta, até quem
+    // administra abria o aviso crítico sem caminho para consertar.
     h.falhas = ["recibo_com_valor_diferente"];
     const r = await rodar();
 
@@ -147,7 +152,10 @@ describe("quando a conferência quebra", () => {
     expect(aviso.kind).toBe(KIND_DO_AVISO);
     expect(aviso.severity).toBe("critical");
     expect(aviso.organization_id).toBe(ORG_A);
-    expect(aviso.ref_id).toBe("cobranca-" + ORG_A + "-1");
+    expect(aviso.ref_kind).toBeUndefined();
+    expect(aviso.ref_id).toBeUndefined();
+    // A amostra não se perde: ela vai no corpo, que é onde serve ao suporte.
+    expect(String(aviso.body)).toContain("cobranca-" + ORG_A + "-1");
   });
 
   it("diz no corpo que o dinheiro entra e o produto não sai", async () => {

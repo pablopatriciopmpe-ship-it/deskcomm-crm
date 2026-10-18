@@ -75,6 +75,7 @@ interface Excecao {
  * linhas da OUTRA organização, não uma leitura como superusuário.
  */
 const PROVA_PROPRIA: readonly Excecao[] = [
+  { tabela: "payment_provider_credentials", razao: "tests/invariants/pagamentos-conta-so-gestor-le.test.ts — PARA ONDE VAI O DINHEIRO das vendas, e por isso a policy exige `manager`, não `agent`: fica fora de TABLES porque aquele molde mede com um usuário agent, cujo controle positivo leria ZERO com a policy CERTA. Os três eixos por JWT: manager da própria organização lê (controle positivo), manager do vizinho lê ZERO, agent da própria lê ZERO. Mais a coluna-segredo (o hash do token do webhook) recusada por grant de coluna até para quem pode ler a linha." },
   { tabela: "jev_router_decisions", razao: "tests/invariants/jev-roteador-decisoes.test.ts — dois tenants por JWT: leitura local, zero do vizinho; anon sem leitura, authenticated sem escrita; poda com piso no banco." },
   { tabela: "golden_candidates", razao: "tests/invariants/golden-candidates.test.ts — dois tenants reais por JWT (agent): leitura positiva local e ZERO do vizinho nos dois sentidos, a tabela inteira sem filtro igual à própria, anon recusado, e insert/update/delete de authenticated sem efeito (só o servidor grava)." },
   { tabela: "jev_observacoes", razao: "tests/invariants/jev-observacoes.test.ts — dois tenants reais por JWT (agent): leitura positiva local e ZERO do vizinho nos dois sentidos, a tabela inteira sem filtro igual à própria, anon recusado, e insert/update/delete de authenticated sem efeito (só o servidor grava)." },

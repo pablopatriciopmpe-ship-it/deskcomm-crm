@@ -361,12 +361,20 @@ async function abrirAviso(
       "A conferência do recibo do provedor parou de reconhecer a página dele. " +
       "Enquanto isso durar, pagamento que entrar NÃO é confirmado e nenhum produto é entregue — " +
       "o dinheiro cai na conta do provedor normalmente, mas o sistema não fica sabendo. " +
-      `Diagnóstico técnico: ${motivo}. ` +
+      `Diagnóstico técnico: ${motivo} (amostra: cobrança ${cobranca.id}). ` +
       "Este aviso se fecha sozinho quando a conferência voltar a funcionar.",
-    // O defeito é do parser, não desta cobrança — ela é só a amostra que o
-    // suporte usa para reproduzir.
-    ref_kind: "payment_charge",
-    ref_id: cobranca.id,
+    // ⚠️ SEM `ref_kind`/`ref_id`, e isso é o que faz o botão de reparo existir.
+    //
+    // O aviso nascia apontando para a cobrança que serviu de amostra. Mas o
+    // resolvedor de destino (`lib/ai/inbox-destino.ts`) manda para "contexto
+    // indisponível" quando o `ref_kind` não está na lista `refs` da política — e
+    // o destino GERAL só é alcançado quando não há referência nenhuma. Com a
+    // referência posta, até quem administra abria o aviso crítico e não recebia
+    // o caminho para consertar.
+    //
+    // O defeito nunca foi daquela cobrança: ela é só a amostra que reproduz. Por
+    // isso o id dela foi para o CORPO (onde serve ao suporte) e a referência
+    // saiu, liberando o destino geral: a tela de receber pagamentos.
   });
 
   if (!error) return true;
