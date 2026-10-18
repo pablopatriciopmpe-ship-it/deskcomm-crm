@@ -1199,7 +1199,7 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
                   </div>
                   {entregaNova[o.id] ? (
                     <div className="mt-1.5 flex flex-col gap-1">
-                      <code className="block overflow-x-auto rounded bg-muted px-1.5 py-1 text-[10px]">
+                      <code className="block overflow-x-auto rounded-md bg-muted px-1.5 py-1 text-[10px]">
                         {entregaNova[o.id]}
                       </code>
                       <p className="text-[10px] text-muted-foreground">

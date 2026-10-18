@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { copyToClipboard } from "@/lib/clipboard";
 import { useT } from "@/lib/i18n/IdiomaProvider";
 
 /**
@@ -159,12 +160,19 @@ export function ContaDePagamento({ inicial }: { inicial: EstadoDaConta }) {
   }
 
   async function copiar(texto: string) {
-    try {
-      await navigator.clipboard.writeText(texto);
+    // `copyToClipboard` da casa, nunca a API do navegador direto — e a cerca
+    // que cobra isso varre o TEXTO do arquivo, então nem citar o nome dela aqui.
+    //
+    // O motivo: aquela API só existe em contexto seguro, e uma instalação
+    // alcançada por IP ou por http não tem um. O helper cai para o modo antigo
+    // nesse caso — sem ele, quem instalou numa VPS ainda sem domínio não
+    // copiaria o endereço do webhook, que é exatamente o passo em que essa
+    // pessoa está.
+    if (await copyToClipboard(texto)) {
       toast.success(t("Endereço copiado."));
-    } catch {
-      toast.error(t("Não deu para copiar. Selecione e copie à mão."));
+      return;
     }
+    toast.error(t("Não deu para copiar. Selecione e copie à mão."));
   }
 
   // Assinar a chave de uma conta enquanto o campo mostra OUTRA tag seria assinar
