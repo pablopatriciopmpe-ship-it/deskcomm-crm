@@ -71,6 +71,19 @@ import { entraPorPacote, type ToolBundle, type ToolRisk } from "./pacotes";
  *    3 vagas para 1. Eram 3 as que o teto 25 existia para deixar, e a proposta
  *    comercial comeu uma por capacidade.
  *
+ * ── 28: o dia previsto chegou (cobrança por PIX) ───────────────────────────
+ *
+ * A capacidade `crm_cobrar_produto` entrou no `vender`, que é o default do
+ * onboarding — então ela consumiu a vaga de folga que o 27 existia para deixar,
+ * e o `evoluir` passou a exigir 28. Nenhum segundo pacote cabia mais.
+ *
+ * O passo é o que o parágrafo abaixo já prescrevia para este caso, palavra por
+ * palavra: "o dia em que o `evoluir` exigir 28, o passo volta a ser ele". 28 é
+ * o MENOR número que restaura a mesma folga — não é escolher qual jornada ganha
+ * vaga, que é a outra pergunta, a que ninguém mediu.
+ *
+ * O argumento original, que segue valendo:
+ *
  * 27 é de novo o MENOR passo que resolve, um degrau adiante e por um degrau:
  * cada capacidade nova que entra no `vender` consome uma vaga de folga. Passar
  * de 27 deixa de ser restaurar a mesma folga e vira escolher QUAL pacote ganha a
@@ -80,7 +93,7 @@ import { entraPorPacote, type ToolBundle, type ToolRisk } from "./pacotes";
  * que o bloco ⚠️ acima diz. O dia em que o `evoluir` exigir 28, o passo volta a
  * ser ele.
  */
-export const TETO_TOOLS_POR_AGENTE = 27;
+export const TETO_TOOLS_POR_AGENTE = 28;
 
 /** O mínimo que a regra precisa saber de uma capacidade. */
 export interface CapacidadeSelecionavel {

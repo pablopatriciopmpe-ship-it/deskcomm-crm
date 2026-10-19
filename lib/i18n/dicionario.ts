@@ -16310,6 +16310,7 @@ export const DICIONARIO: Traducoes = {
   "atualizado": { es: "actualizado" },
   "recusado": { es: "rechazado" },
   "Recusado.": { es: "Rechazado." },
+  "A conta que recebe o PIX das vendas, para o assistente cobrar e entregar o produto sozinho.": { es: "La cuenta que recibe el PIX de las ventas, para que el asistente cobre y entregue el producto por sí solo." },
   "Enquanto isto durar, pagamento que entrar não é confirmado e nenhum produto é entregue — o dinheiro cai na conta do provedor normalmente. Peça a quem administra para conferir a conta de pagamento.": { es: "Mientras esto dure, el pago que entre no se confirma y ningún producto se entrega — el dinero cae en la cuenta del proveedor normalmente. Pide a quien administra que revise la cuenta de pago." },
   "Conferir a conta de pagamento": { es: "Revisar la cuenta de pago" },
   "Pagamentos estão entrando e não viram venda confirmada": { es: "Los pagos están entrando y no se convierten en venta confirmada" },

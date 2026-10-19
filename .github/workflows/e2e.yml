@@ -1352,7 +1352,7 @@ jobs:
             # medindo o mesmo relógio divergem: a catraca é
             # tests/unit/e2e-avisa-antes-do-teto.test.ts, que reprova se este
             # valor e o `timeout-minutes` deixarem de concordar.
-            echo "TETO_SEGUNDOS=1800"
+            echo "TETO_SEGUNDOS=3600"  # = `timeout-minutes: 60`; os dois medem o MESMO relogio
             # Corte antecipado, 2 min antes do teto. A margem paga o que o
             # relógio de passo NÃO vê: o que o runner faz antes do primeiro passo
             # (até o #983 incluía ~51 s de `Initialize containers` em toda
