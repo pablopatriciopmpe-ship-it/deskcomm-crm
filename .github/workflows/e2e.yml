@@ -174,7 +174,13 @@ jobs:
     # O conserto certo não é afrouxar: é repartir. Por isso esta branch traz o
     # rebalanceamento junto (o #1174), e com as partes em ~18 min o portão de 28
     # deixa de ser apertado sem que ninguém precise ceder.
-    timeout-minutes: 30
+    # ⚠️ DIVERGÊNCIA DESTA CÓPIA — 30 no original.
+    #
+    # Cinco das seis partes batiam 28 min e saíam com `exit 124` (o `timeout`
+    # cortou); a parte 4 fechava em 10. Runner público, não o executor próprio
+    # do original — e o CONTROLE confirma: um PR trivial da `main` pura, sem uma
+    # linha nossa, teve as SEIS partes cortadas igual (PR #5).
+    timeout-minutes: 60
     concurrency:
       group: ${{ github.workflow }}-e2e-parte${{ matrix.parte }}-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'pull_request' && github.run_attempt != '1' && format('-reentrada-{0}', github.event.pull_request.head.sha) || '' }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1341,7 +1347,7 @@ jobs:
             # Orçamento declarado: é aqui que a parte deveria caber, com o
             # relógio do job inteiro. 24 min < teto de propósito — o aviso vem
             # ANTES do corte, não no lugar dele.
-            echo "ORCAMENTO_SEGUNDOS=1440"
+            echo "ORCAMENTO_SEGUNDOS=3300"  # ver o `timeout-minutes` do job: divergência desta cópia
             # O MESMO teto do `timeout-minutes` do job (30 min). Dois números
             # medindo o mesmo relógio divergem: a catraca é
             # tests/unit/e2e-avisa-antes-do-teto.test.ts, que reprova se este
