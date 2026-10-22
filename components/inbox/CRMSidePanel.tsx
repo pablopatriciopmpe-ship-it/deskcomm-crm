@@ -3,7 +3,9 @@
 import { RoteirosDoContato } from "@/components/contacts/RoteirosDoContato";
 import { AcervoSearch } from "./AcervoSearch";
 import { LeadEnrichment } from "./LeadEnrichment";
+import { AnuncioDoContato, type AnuncioDeOrigem, type AnuncioMaisRecente } from "./AnuncioDoContato";
 import type { ProspectEnrichment } from "@/lib/prospecting/schema";
+import type { PersonalizacaoProspeccao } from "@/lib/prospecting/personalizar";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { roleAtLeast } from "@/lib/auth/types";
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
@@ -39,7 +41,7 @@ import { useBulkAction } from "@/hooks/kanban/useBulkAction";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { PROXIMO_PASSO_DA_MENSAGEM_NOVA } from "@/lib/atendimento/proximo-passo-padrao";
-import { rotuloDoContato } from "@/lib/contacts/rotulo-do-contato";
+import { rotuloParaAEquipe } from "@/lib/contacts/rotulo-do-contato";
 import { phoneForDisplay } from "@/lib/channels/phone-variants";
 
 interface Props {
@@ -726,6 +728,8 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
 
   const [enrichment, setEnrichment] = useState<(ProspectEnrichment & { collected_at: string }) | null>(null);
   const [enrichmentError, setEnrichmentError] = useState(false);
+  const [personalizacao, setPersonalizacao] =
+    useState<PersonalizacaoProspeccao | null>(null);
   const [leads, setLeads] = useState<LeadRow[] | null>(null);
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
   /** Endereço novo por pedido, depois de reenviar. Vive só nesta tela. */
@@ -735,6 +739,7 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
   const [demandas, setDemandas] = useState<DemandaRow[] | null>(null);
   const [fatos, setFatos] = useState<Array<{ id: string; headline: string; body: string }>>([]);
   const [historico, setHistorico] = useState<Array<{ id: string; desfecho: string; fechada_em: string }>>([]);
+  const [anuncios, setAnuncios] = useState<{ origem: AnuncioDeOrigem | null; recente: AnuncioMaisRecente | null }>({ origem: null, recente: null });
   const [summaryContactId, setSummaryContactId] = useState<string | null>(null);
   /**
    * O TERCEIRO ESTADO. Antes existiam dois — carregando e "tem N itens" — e a
@@ -772,6 +777,7 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
       setActivities(null);
       setDemandas(null);
       setFatos([]); setHistorico([]);
+      setAnuncios({ origem: null, recente: null });
       setLeadAtivoId(null);
       idsDeNegocioVistos.current.clear();
       procurarNovoNegocio.current = false;
@@ -790,18 +796,22 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
           data: {
             enrichment?: (ProspectEnrichment & { collected_at: string }) | null;
             enrichment_error?: boolean;
+            personalizacao?: PersonalizacaoProspeccao | null;
             leads: LeadRow[];
             orders: OrderRow[];
             activities: ActivityRow[];
             demandas: DemandaRow[];
             fatos?: Array<{ id: string; headline: string; body: string }>;
             historico?: Array<{ id: string; desfecho: string; fechada_em: string }>;
+            anuncio_de_origem?: AnuncioDeOrigem | null;
+            anuncio_mais_recente?: AnuncioMaisRecente | null;
           };
         }>(`/api/v1/contacts/${contactId}/crm-summary`);
         if (cancelled) return;
         setSummaryContactId(contactId);
         setEnrichment(r.data.enrichment ?? null);
         setEnrichmentError(r.data.enrichment_error ?? false);
+        setPersonalizacao(r.data.personalizacao ?? null);
         setLeads(r.data.leads);
         // A TROCA DE FUNIL cria um negócio que ESTE painel nunca viu, e o
         // diálogo reusado do Kanban não devolve o id dele. O negócio novo é o
@@ -823,6 +833,7 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
         // que é o caso saudável.
         setDemandas(r.data.demandas ?? []);
         setFatos(r.data.fatos ?? []); setHistorico(r.data.historico ?? []);
+        setAnuncios({ origem: r.data.anuncio_de_origem ?? null, recente: r.data.anuncio_mais_recente ?? null });
       } catch {
         if (cancelled) return;
         // Falha NÃO vira lista vazia. Os dados ficam `null` e o painel diz que
@@ -833,6 +844,7 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
         setActivities(null);
         setDemandas(null);
         setFatos([]); setHistorico([]);
+        setAnuncios({ origem: null, recente: null });
       }
     }
 
@@ -905,7 +917,7 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
   }, []);
 
   const tags = contact?.tags ?? [];
-  const displayName = rotuloDoContato(contact, t);
+  const displayName = rotuloParaAEquipe(contact, t);
 
   // `erro` PRIMEIRO, e não é detalhe: as três listas voltam a `null` quando a
   // leitura falha, e este derivado lê `null` como "ainda não chegou". Sem esta
@@ -1025,11 +1037,16 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
         </Card>
       </section>
 
+      {contactId && summaryContactId === contactId && !erro && (
+        <AnuncioDoContato contactId={contactId} origem={anuncios.origem} recente={anuncios.recente} />
+      )}
+
       <LeadEnrichment
         data={summaryContactId === contactId && !erro && !contact?.is_anonymized ? enrichment : null}
         loading={sectionsLoading}
         error={erro || (summaryContactId === contactId && enrichmentError)}
         onRetry={recarregar}
+        sobrescritaVocabulario={personalizacao?.vocabulario ?? null}
       />
 
       {contactId && defaultPipeline.data && (
@@ -1038,6 +1055,9 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
           onOpenChange={setLeadDialogOpen}
           pipelineId={defaultPipeline.data.pipeline.id}
           stages={defaultPipeline.data.stages}
+          // #3038: mesmo recorte do funil — os campos exigidos pela etapa vão
+          // no `settings` do funil padrão que este painel já carregou.
+          settings={defaultPipeline.data.pipeline.settings}
           contactId={contactId}
           onCreated={() => {
             setLeadAtivoId(null);

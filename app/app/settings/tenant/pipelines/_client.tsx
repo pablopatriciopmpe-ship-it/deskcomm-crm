@@ -21,6 +21,7 @@ import { camposDoFunil, escopoDoCampo } from "@/lib/leads/campos-do-funil";
 import { importarOpcoesCsv } from "@/lib/leads/campos-pesquisaveis";
 import { modoDeReabertura } from "@/lib/leads/reabertura";
 import { CATEGORIAS_DE_PERDA } from "@/lib/schemas/leads";
+import { rotuloDoTipo } from "@/lib/schemas/rotulos-do-campo";
 import { customFieldSchema, type CustomFieldDef } from "@/lib/schemas/settings";
 import {
   mostrarQuandoSchema,
@@ -438,19 +439,19 @@ function PipelineEditor({
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="space-y-1">
-          <Label className="text-xs">Lead</Label>
+          <Label className="text-xs">{t("Lead")}</Label>
           <Input value={lead} onChange={(e) => setLead(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Deal</Label>
+          <Label className="text-xs">{t("Deal")}</Label>
           <Input value={deal} onChange={(e) => setDeal(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Won</Label>
+          <Label className="text-xs">{t("Won")}</Label>
           <Input value={won} onChange={(e) => setWon(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Lost</Label>
+          <Label className="text-xs">{t("Lost")}</Label>
           <Input value={lost} onChange={(e) => setLost(e.target.value)} />
         </div>
       </div>
@@ -603,7 +604,7 @@ function PipelineEditor({
               <SelectContent>
                 {TIPOS_DE_CAMPO.map((tipo) => (
                   <SelectItem key={tipo} value={tipo}>
-                    {tipo === "currency" ? t("Moeda (BRL)") : tipo}
+                    {rotuloDoTipo(tipo, t)}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -50,7 +50,15 @@ const VIZINHO = "7a5f0011-2222-4000-8000-000000000003";
 /** Anonimizado com a seção QUEBRADA declarada — tem de falhar alto. */
 const ERROU = "7a5f0011-2222-4000-8000-000000000004";
 
-const ROTULO_ESPERADO = "Cliente Anonimizado #7a5f0011"; // id::text, 8 primeiros caracteres
+/**
+ * O rótulo NÃO é mais `substring(id, 1, 8)` (issue #2342): a cascata gera um sufixo OPACO
+ * e o grava no contato no passo 1, e o gatilho de seções reusa este MESMO valor. O teste
+ * lê o que o banco guardou — a prova de que o sufixo não é mais o id está em
+ * `tests/invariants/lgpd-rotulo-opaco-e-external-id.test.ts`.
+ */
+function rotuloDe(contactId: string): string {
+  return sql(`select name from public.contacts where id = '${contactId}';`).trim().split("\n").at(-1) ?? "";
+}
 
 beforeAll(() => {
   sql(`
@@ -125,7 +133,7 @@ describe("D8 — a anonimização alcança as seções de módulo declaradas", (
     // para um módulo que não pediu (honorários, 0480). Enquanto ninguém
     // declarava, "o registro está vazio" dizia isso com uma linha.
     //
-    // A 0694 trouxe o primeiro declarante real — o módulo de pagamentos, que
+    // A 0718 trouxe o primeiro declarante real — o módulo de pagamentos, que
     // precisa redigir o checkout e o recibo (instrumento de pagamento vivo e
     // página que nomeia o pagador) e derrubar o acesso da entrega pondo o hash
     // do token em nulo. Com um declarante legítimo, `count = 0` passou a ser
@@ -187,7 +195,7 @@ describe("D8 — a anonimização alcança as seções de módulo declaradas", (
 
     anonimizar(ALVO);
 
-    expect(linhaDe(ALVO)).toBe(`<null>|${ROTULO_ESPERADO}`);
+    expect(linhaDe(ALVO)).toBe(`<null>|${rotuloDe(ALVO)}`);
     // O vizinho é da MESMA organização e da MESMA tabela — e não é tocado.
     expect(linhaDe(VIZINHO)).toBe("O nome de Joao Vizinho|querido Joao Vizinho");
   });
@@ -247,7 +255,7 @@ describe("D8 — a anonimização alcança as seções de módulo declaradas", (
     // A guarda `when (new.is_anonymized and not old.is_anonymized)` — repetir a chamada não
     // pode ser erro nem mudar o que já foi redigido.
     expect(() => anonimizar(ALVO)).not.toThrow();
-    expect(linhaDe(ALVO)).toBe(`<null>|${ROTULO_ESPERADO}`);
+    expect(linhaDe(ALVO)).toBe(`<null>|${rotuloDe(ALVO)}`);
     expect(linhaDe(VIZINHO)).toBe("O nome de Joao Vizinho|querido Joao Vizinho");
   });
 

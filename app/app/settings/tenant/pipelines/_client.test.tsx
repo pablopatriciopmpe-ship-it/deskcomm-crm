@@ -46,6 +46,7 @@ globalThis.ResizeObserver = class {
 };
 
 import { updatePipelineConfig } from "@/app/actions/settings/updatePipelineConfig";
+import { ROTULOS_DO_TIPO } from "@/lib/schemas/rotulos-do-campo";
 import {
   PipelinesClient,
   TIPOS_DE_CAMPO,
@@ -91,14 +92,64 @@ describe("tipos de campo que a tela do funil oferece", () => {
   });
 });
 
+/**
+ * O SELETOR DE TIPO FALA A LÍNGUA DE QUEM CONFIGURA (issue #3037).
+ *
+ * O dono do negócio via `multiselect` e `searchable_select` no seletor sem
+ * saber qual era a lista de várias escolhas e qual era a pesquisável. O `value`
+ * continua técnico — é o que o schema e a API gravam —, mas o texto que a
+ * pessoa lê passa a ser um rótulo em português, pelo `t()`.
+ */
+describe("rótulos dos tipos de campo (#3037)", () => {
+  it("o mapa cobre TODO tipo do schema, e nenhum rótulo é o nome técnico", () => {
+    const doSchema = [...customFieldSchema.shape.type.options].sort();
+    expect(Object.keys(ROTULOS_DO_TIPO).sort()).toEqual(doSchema);
+
+    for (const tipo of doSchema) {
+      const rotulo = ROTULOS_DO_TIPO[tipo];
+      expect(rotulo.trim().length, `rótulo vazio para ${tipo}`).toBeGreaterThan(0);
+      expect(rotulo, `${tipo} continua com nome técnico`).not.toBe(tipo);
+    }
+  });
+
+  it("o gatilho mostra o RÓTULO — inclusive os dois que se confundiam", () => {
+    const FUNIL_DE_TIPOS: PipelineRow = {
+      id: "44444444-4444-4444-8444-444444444444",
+      name: "Tipos",
+      slug: "tipos",
+      vocabulary: null,
+      settings: {
+        fields: [
+          { key: "um", label: "Um", type: "select" },
+          { key: "varios", label: "Vários", type: "multiselect" },
+          { key: "busca", label: "Busca", type: "searchable_select" },
+          { key: "curto", label: "Curto", type: "text" },
+        ],
+      },
+    };
+    render(<PipelinesClient pipelines={[FUNIL_DE_TIPOS]} podeEditarConfig />);
+
+    expect(screen.getByLabelText(/Tipo do campo 1/i).textContent?.trim()).toBe(
+      "Lista de uma escolha",
+    );
+    expect(screen.getByLabelText(/Tipo do campo 2/i).textContent?.trim()).toBe(
+      "Lista de várias escolhas",
+    );
+    expect(screen.getByLabelText(/Tipo do campo 3/i).textContent?.trim()).toBe(
+      "Lista pesquisável",
+    );
+    expect(screen.getByLabelText(/Tipo do campo 4/i).textContent?.trim()).toBe("Texto curto");
+  });
+});
+
 describe("um campo multiselect já gravado", () => {
   it("abre com o tipo à mostra, e não com o seletor em branco", () => {
     render(<PipelinesClient pipelines={[FUNIL]} podeEditarConfig />);
 
     const seletor = screen.getByLabelText(/Tipo do campo 1/i);
-    // O texto do gatilho do Radix é o rótulo do item casado. Vazio = nenhum
-    // `SelectItem` bateu com o `value`, que é exatamente o defeito.
-    expect(seletor.textContent?.trim()).toBe("multiselect");
+    // O texto do gatilho do Radix é o RÓTULO do item casado (issue #3037).
+    // Vazio = nenhum `SelectItem` bateu com o `value`, que é o defeito antigo.
+    expect(seletor.textContent?.trim()).toBe("Lista de várias escolhas");
   });
 
   it("deixa editar as opções — sem isso o campo fica só de leitura", () => {

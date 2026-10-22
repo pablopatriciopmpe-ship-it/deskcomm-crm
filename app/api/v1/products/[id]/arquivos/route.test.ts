@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { bancoFalso, operacao, type BancoFalso, type Cadeia, type Resposta } from "@/tests/helpers/banco-falso-da-cobranca";
 
 /**
- * A ROTA QUE FALTAVA: sem ela a 0694 era tabela e bucket sem ninguém escrevendo,
+ * A ROTA QUE FALTAVA: sem ela a 0718 era tabela e bucket sem ninguém escrevendo,
  * e o dono só punha o entregável no produto por SQL na mão.
  *
  * Os casos prendem o que custa caro aqui: o tipo sai dos BYTES (o arquivo vai

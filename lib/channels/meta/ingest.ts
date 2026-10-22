@@ -25,11 +25,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { audit } from "@/lib/audit";
 import { pausarIaPorAtendimentoManual } from "@/lib/escalacao/atendimento-manual";
-import { estamparAtribuicaoDoContato } from "@/lib/leads/atribuicao-de-anuncio";
+import { estamparAtribuicaoDoContato, metadataDoAnuncio } from "@/lib/leads/atribuicao-de-anuncio";
 import {
   ehNumeroInternoDeAviso,
   registrarMensagemIgnorada,
 } from "@/lib/escalacao/numero-interno-de-aviso";
+import { consumirRespostaDoSuporteNoWhatsApp } from "@/lib/escalacao/resposta-whatsapp-ao-caso";
 import { logger } from "@/lib/logger";
 
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "../archived";
@@ -212,16 +213,19 @@ export async function ingestMetaInbound(
   // dígitos (`wa_id`), e o `+` é o que a comparação por variantes do nono dígito
   // espera — quem casa é a mesma regra dos outros dois ingestores.
   if (
-    await ehNumeroInternoDeAviso(admin, orgId, {
-      kind: "phone",
-      phone: `+${e.from.replace(/\D/g, "")}`,
-      lid: null,
+    await consumirRespostaDoSuporteNoWhatsApp(admin, {
+      organizationId: orgId,
+      channelSessionId: sessao.id,
+      identidade: {
+        kind: "phone",
+        phone: `+${e.from.replace(/\D/g, "")}`,
+        lid: null,
+      },
+      direction: "inbound",
+      texto: e.text,
+      externalId: e.externalId,
     })
   ) {
-    await registrarMensagemIgnorada(admin, orgId, {
-      direction: "inbound",
-      sessionId: sessao.id,
-    });
     return { status: "ignored", reason: "numero_interno_de_aviso" };
   }
 
@@ -291,6 +295,9 @@ export async function ingestMetaInbound(
         // `metadata` aqui, então nada já gravado é sobrescrito.
         ...(nomeDoArquivo ? { media_filename: nomeDoArquivo } : {}),
         ...(e.sharedContact ? { shared_contact: e.sharedContact } : {}),
+        // O anúncio DESTA mensagem, não só o primeiro do contato: é o que mostra
+        // na conversa que a pessoa voltou por outro anúncio. Ver `metadataDoAnuncio`.
+        ...metadataDoAnuncio(atribuicao),
       },
     })
     .select("id")
@@ -524,13 +531,18 @@ export async function ingestMetaEcho(
  * Contato que a empresa criou ou renomeou no ENDEREÇO do app WhatsApp Business
  * (coexistência), entregue pela Meta no campo `smb_app_state_sync`.
  *
- * O que FAZ: garante que o contato exista no CRM **com o nome que a equipe usa
- * no celular**, pela mesma resolução da recebida e do eco —
- * `findContactByVariants` (variantes do número, senão a mesma pessoa vira dois
- * cadastros) e `fn_upsert_wa_contact`. O `coalesce` dela É a regra do código:
- * preenche `display_name` quando vazio e **nunca sobrescreve** um nome que já
- * existe — quem vence entre o nome do operador no CRM e o do app a issue não
- * prova, e a regra que já existe no repo é não sobrescrever.
+ * O que FAZ: garante que o contato exista no CRM, pela mesma resolução da
+ * recebida e do eco — `findContactByVariants` (variantes do número, senão a
+ * mesma pessoa vira dois cadastros) e `fn_upsert_wa_contact` — e guarda **o
+ * nome que a equipe usa no celular** em `address_book_name`, o campo que SÓ A
+ * EQUIPE vê.
+ *
+ * O nome NÃO vai mais para `display_name` (era o `p_notify` do upsert): é o
+ * rótulo que alguém da empresa escreveu no celular, e `display_name` entra no
+ * `{{nome}}` das campanhas — o apelido interno chegaria ao cliente. Mesma regra
+ * da varredura `contact-names` (decisão do mantenedor no PR #2439). Aqui o app
+ * é a fonte viva da agenda, então o nome novo SOBRESCREVE o anterior: renomear
+ * no celular renomeia no CRM.
  *
  * O que NÃO faz, de propósito:
  *
@@ -595,11 +607,22 @@ export async function ingestMetaAppContactSync(
       p_lid: null,
       // Mesma grafia do `from`/`to` das mensagens: a identidade wa, não o `+`.
       p_chat_id: e.phone,
-      p_notify: nome,
+      // NUNCA o nome da agenda: `p_notify` vira `display_name`, que o `{{nome}}` das campanhas lê.
+      p_notify: null,
     } as never,
   );
   if (erroContato || !contactId) {
     return { status: "failed", reason: `contato: ${erroContato?.message ?? "sem id"}` };
+  }
+
+  const { error: erroNome } = await admin
+    .from("contacts")
+    .update({ address_book_name: nome.slice(0, 200) })
+    .eq("id", contactId as string)
+    .eq("organization_id", orgId)
+    .eq("is_anonymized", false);
+  if (erroNome) {
+    return { status: "failed", reason: `nome_da_agenda: ${erroNome.message}` };
   }
 
   return { status: "synced", contactId: contactId as string };

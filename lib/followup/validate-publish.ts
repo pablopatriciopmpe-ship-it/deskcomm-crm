@@ -4,6 +4,7 @@ import { branchIdForCondition, nodeBranches } from './graph-schema';
 import { rotuloDoRamo } from './rotulo-do-ramo';
 import type { NomesDeValor } from './vocabulario';
 import type { EtapaCitada } from './etapas-citadas';
+import type { ModelosDaConta } from './modelos-citados';
 import { recusaDeMotivoForaDoVocabulario } from '../leads/motivo-da-perda';
 import { capabilitiesOf, transportaMensagem, type ChannelProvider } from '../channels/capabilities';
 import { CUSTO_NO_MOTOR, TETO_DE_PASSOS_DO_MOTOR } from './custo-no-motor';
@@ -47,6 +48,9 @@ export const PUBLISH_ERROR_CODES = [
   'motivo_da_perda_ausente',
   'motivo_da_perda_invalido',
   'tag_ausente',
+  // Seguimento do #3056 — o modelo de mensagem do passo não existe nesta conta
+  // (importado de outra, ou apagado): o motor lançaria a cada envio.
+  'modelo_inexistente',
   // Regra de data (item 14): sem o campo do negócio ela não tem o que comparar
   // e responderia `false` para sempre, sem dizer por quê.
   'campo_de_data_ausente',
@@ -113,12 +117,16 @@ export interface ContextoDoPublish {
    */
   roteiro?: RoteiroDoPublish;
   /**
-   * Alguma conexão da organização só aceita modelo APROVADO com a janela de 24 h
-   * fechada? Só aí o plano B (`fallback_template_id`) de uma mensagem por IA
-   * depois de 24 h de espera tem o que fazer — em runtime ele só sai com a janela
-   * fechada (`janelaFechada` em followup-turn.ts). Num canal sem janela, exigi-lo
-   * travaria o publish: o seletor do plano B só oferece modelos aprovados, e esse
-   * canal não os tem. Ausente = exige (o comportamento de antes).
+   * Alguma conexão da organização EXIGE modelo aprovado com a janela de 24 h
+   * fechada — canal que tem a regra da janela E tem catálogo de definições
+   * aprovadas a oferecer (`algumCanalExigeModeloForaDaJanela`, #3109)? Só aí o
+   * plano B (`fallback_template_id`) de uma mensagem por IA depois de 24 h de
+   * espera tem o que fazer — em runtime ele só sai com a janela fechada
+   * (`janelaFechada` em followup-turn.ts). Num canal sem janela, ou num canal
+   * que fecha a janela mas não tem modelo aprovado nenhum (o canal social de
+   * Instagram/Facebook), exigi-lo travaria o publish sem oferecer saída: o
+   * seletor do plano B só oferece modelos aprovados. Ausente = exige (o
+   * comportamento de antes).
    */
   exigeModeloForaDaJanela?: boolean;
   /**
@@ -126,7 +134,16 @@ export interface ContextoDoPublish {
    * depende dele —, e ausente significa "não há o que avisar sobre o gatilho".
    */
   trigger?: TriggerConfig;
+  /**
+   * Dos modelos que o grafo cita (`template_id`/`fallback_template_id`), os que
+   * existem na organização (`carregaModelosCitados`). Ausente = não confere.
+   */
+  modelos?: ModelosDaConta;
 }
+
+/** Chave do dicionário (a rota traduz): a frase não cita id, que a pessoa não lê. */
+export const MENSAGEM_MODELO_INEXISTENTE =
+  'Escolha um modelo de mensagem: o que estava aqui não existe nesta conta.';
 
 /**
  * Os avisos que o gatilho de silêncio rende. Nenhum reprova; todos são coisas
@@ -162,14 +179,37 @@ export function avisosDoGatilho(trigger: TriggerConfig | undefined): PublishVali
 }
 
 /**
- * `true` quando algum dos providers das conexões da organização recusa texto
- * livre fora da janela. Provider que esta imagem não conhece (ou que não manda
- * mensagem) não conta: por ele não sai follow-up nenhum.
+ * `true` quando alguma conexão da organização EXIGE modelo aprovado fora da
+ * janela de 24 h — a única situação em que o plano B (`fallback_template_id`) de
+ * uma mensagem por IA depois de 24 h tem o que fazer.
+ *
+ * ─── Não basta o canal ter janela (#3109) ─────────────────────────────────
+ *
+ * A versão anterior perguntava só `!freeformOutsideWindow`. O canal social de
+ * Instagram/Facebook fecha a janela (`freeformOutsideWindow: false`, MEDIDO: a
+ * Meta recusa a ENTREGA com 131047) e mesmo assim NÃO tem catálogo de definições
+ * aprovadas (`requiresTemplates: false` — não há WABA por trás dele). Nessa conta
+ * o seletor do plano B nasce vazio: não existe modelo aprovado a escolher, e a
+ * exigência fica impossível de cumprir. Como a conta era da ORGANIZAÇÃO INTEIRA,
+ * uma conexão social reprovava o publish de um fluxo que só roda no WhatsApp por
+ * QR (canal sem janela) — e nem com plano B nem sem ele havia configuração
+ * válida para publicar.
+ *
+ * Então as duas perguntas entram juntas, e a segunda é a que faltava: o canal tem
+ * a REGRA da janela E tem DEFINIÇÕES aprovadas para oferecer? Sem catálogo, o
+ * plano B não é exigência — é impossibilidade, e recusar a publicação não
+ * destrava nenhuma configuração: quem trata o que acontece com a mensagem livre
+ * fora da janela num contato de canal social é o envio, não o publish.
+ *
+ * Provider que esta imagem não conhece (ou que não manda mensagem) não conta: por
+ * ele não sai follow-up nenhum.
  */
 export function algumCanalExigeModeloForaDaJanela(providers: readonly (string | null)[]): boolean {
-  return providers.some(
-    (p) => transportaMensagem(p) && !capabilitiesOf(p as ChannelProvider).freeformOutsideWindow
-  );
+  return providers.some((p) => {
+    if (!transportaMensagem(p)) return false;
+    const caps = capabilitiesOf(p as ChannelProvider);
+    return !caps.freeformOutsideWindow && caps.requiresTemplates;
+  });
 }
 
 export interface RoteiroDoPublish {
@@ -1117,6 +1157,17 @@ export function validateFlowForPublish(
   for (const node of [...nodes].sort(byId)) {
     if (node.type === 'move_lead') conferirEtapaDestino(node, contexto, errors);
     if (node.type === 'edit_lead_tag') conferirTags(node, errors);
+    if (node.type === 'action' && contexto.modelos !== undefined) {
+      const { prontos, doCanal } = contexto.modelos;
+      const cfg = node.config;
+      const faltando =
+        cfg.mode === 'template'
+          ? !!cfg.template_id && !prontos.has(cfg.template_id) && !doCanal.has(cfg.template_id)
+          : cfg.mode === 'ai_message' && !!cfg.fallback_template_id && !doCanal.has(cfg.fallback_template_id);
+      if (faltando) {
+        errors.push({ node_id: node.id, code: 'modelo_inexistente', message: MENSAGEM_MODELO_INEXISTENTE });
+      }
+    }
   }
 
   for (const node of [...nodes].sort(byId)) {

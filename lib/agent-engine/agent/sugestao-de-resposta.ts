@@ -253,6 +253,19 @@ export function motivoDoVeto(codigo: string | null | undefined): MotivoDaFalha |
         texto:
           "A geração da sugestão falhou, ou o contexto da conversa não pôde ser montado. Tente de novo; se repetir, o motivo ficou registrado no servidor.",
       };
+    case "no_candidate":
+      // A prévia terminou sem nenhum send_message aceito. Pode ser DECISÃO (ex.:
+      // a saudação automática do WhatsApp Business de quem foi abordado, ou só
+      // propor uma ação sem resposta) OU parada: texto solto fora do
+      // send_message, saída cortada no limite de tokens, passos esgotados. O
+      // código não distingue os dois, então o texto não culpa a configuração e
+      // também não afirma que foi decisão. A ação possível é gerar de novo.
+      return {
+        codigo,
+        acionavel: true,
+        texto:
+          "O agente terminou sem propor uma resposta. Pode ter sido uma decisão (por exemplo, diante de uma mensagem automática) ou a geração ter parado antes da resposta. Se esperava uma, gere de novo; senão, não há nada a enviar.",
+      };
     default:
       return null;
   }
@@ -280,4 +293,5 @@ export const CODIGOS_DE_VETO_CONHECIDOS: readonly string[] = [
   "produto_nao_encontrado",
   "unknown_preview_tool",
   "generation_failed",
+  "no_candidate",
 ];

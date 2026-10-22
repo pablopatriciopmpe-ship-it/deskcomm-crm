@@ -28,16 +28,19 @@
     "migration0372",
     "credenciais",
     "acesso",
+    "drivers",
     "dialeto",
     "apiLeitura",
-    "telaExplorador"
+    "telaExplorador",
+    "apiReceitas",
+    "toolReceita"
   ],
   "nodes": [
     {
       "id": "migration0372",
       "lane": "dados",
       "label": "external_db_connections",
-      "sublabel": "migration 0372 · tenant-aware, RLS, senha AES-GCM",
+      "sublabel": "migration 0372 · tenant-aware, RLS, senha AES-GCM · 0691 soma db_type e last_test_aviso",
       "type": "table",
       "dot": "sky"
     },
@@ -45,7 +48,7 @@
       "id": "safeview",
       "lane": "dados",
       "label": "external_db_connections_safe",
-      "sublabel": "view sem as colunas cifradas · a única que a tela lê",
+      "sublabel": "view sem as colunas cifradas · a única que a tela lê · 0691 soma db_type e last_test_aviso",
       "type": "table",
       "dot": "sky"
     },
@@ -106,6 +109,14 @@
       "dot": "blue"
     },
     {
+      "id": "drivers",
+      "lane": "nucleo",
+      "label": "drivers.ts",
+      "sublabel": "escolhe o motor pela conexão: abre o dialeto, testa e fecha o pool",
+      "type": "lib",
+      "dot": "blue"
+    },
+    {
       "id": "dialeto",
       "lane": "nucleo",
       "label": "dialeto.ts",
@@ -157,7 +168,7 @@
       "id": "telaLista",
       "lane": "ui",
       "label": "Lista de conexões",
-      "sublabel": "todos veem · card de cadastro/edição só para admin",
+      "sublabel": "todos veem · card de cadastro/edição só para admin · selo do motor e aviso do teste",
       "type": "route",
       "dot": "purple"
     },
@@ -192,6 +203,46 @@
       "sublabel": "aplicam redigirParaAuditoria (tira os valores de filtro) e motivoDoVazio (erro não é sucesso)",
       "type": "lib",
       "dot": "amber"
+    },
+    {
+      "id": "receitasColuna",
+      "lane": "dados",
+      "label": "receitas (jsonb) em external_db_connections",
+      "sublabel": "migration 0693 · instâncias de receita por org · RLS herda da tabela · fora do _safe",
+      "type": "table",
+      "dot": "sky"
+    },
+    {
+      "id": "receitasCount",
+      "lane": "dados",
+      "label": "receitas_count na view _safe",
+      "sublabel": "jsonb_array_length(receitas) · última coluna da view · contagem só",
+      "type": "table",
+      "dot": "sky"
+    },
+    {
+      "id": "instanciaReceita",
+      "lane": "nucleo",
+      "label": "receitas/*.ts",
+      "sublabel": "DefinicaoDeReceita, registro, validador, instancias (Zod central)",
+      "type": "lib",
+      "dot": "blue"
+    },
+    {
+      "id": "toolReceita",
+      "lane": "agente",
+      "label": "crm_consultar_receita",
+      "sublabel": "listar/executar instâncias · organização do ctx · modulo banco_externo · rastro sem valores",
+      "type": "lib",
+      "dot": "amber"
+    },
+    {
+      "id": "apiReceitas",
+      "lane": "api",
+      "label": "PUT/POST connections/[id]/recipes",
+      "sublabel": "grava instâncias e pré-visualiza (admin) · auditoria só contagens",
+      "type": "api",
+      "dot": "green"
     }
   ],
   "edges": [
@@ -236,12 +287,6 @@
       "from": "guardas",
       "to": "apiConnections",
       "label": "valida no cadastro"
-    },
-    {
-      "id": "e10",
-      "from": "pool",
-      "to": "acesso",
-      "label": "pool da conexão"
     },
     {
       "id": "e11",
@@ -346,12 +391,6 @@
       "label": "o que é visível"
     },
     {
-      "id": "e38",
-      "from": "acesso",
-      "to": "dialeto",
-      "label": "abre o pool e liga a regra"
-    },
-    {
       "id": "e39",
       "from": "dialeto",
       "to": "apiLeitura",
@@ -392,6 +431,96 @@
       "from": "telaFontes",
       "to": "telaExplorador",
       "label": "a grade passa a mostrar só o liberado"
+    },
+    {
+      "id": "e46",
+      "from": "acesso",
+      "to": "drivers",
+      "label": "abre o dialeto pelo motor da conexão"
+    },
+    {
+      "id": "e47",
+      "from": "drivers",
+      "to": "dialeto",
+      "label": "cria o dialeto do motor"
+    },
+    {
+      "id": "e48",
+      "from": "pool",
+      "to": "drivers",
+      "label": "pool do PostgreSQL"
+    },
+    {
+      "id": "e49",
+      "from": "apiTest",
+      "to": "drivers",
+      "label": "testa pelo driver do motor"
+    },
+    {
+      "id": "e50",
+      "from": "apiConnections",
+      "to": "drivers",
+      "label": "fecha o pool ao editar ou apagar"
+    },
+    {
+      "id": "e51",
+      "from": "migration0372",
+      "to": "receitasColuna",
+      "label": "coluna receitas (0693)"
+    },
+    {
+      "id": "e52",
+      "from": "receitasColuna",
+      "to": "receitasCount",
+      "label": "contagem exposta"
+    },
+    {
+      "id": "e53",
+      "from": "credenciais",
+      "to": "instanciaReceita",
+      "label": "linha com receitas"
+    },
+    {
+      "id": "e54",
+      "from": "instanciaReceita",
+      "to": "drivers",
+      "label": "abre o dialeto"
+    },
+    {
+      "id": "e55",
+      "from": "drivers",
+      "to": "toolReceita",
+      "label": "dialeto pronto"
+    },
+    {
+      "id": "e56",
+      "from": "toolReceita",
+      "to": "apiReceitas",
+      "label": "mesma conexão"
+    },
+    {
+      "id": "e57",
+      "from": "apiReceitas",
+      "to": "telaExplorador",
+      "label": "seção Receitas prontas"
+    },
+    {
+      "id": "e58",
+      "from": "telaFontes",
+      "to": "apiReceitas",
+      "label": "grava instâncias"
+    },
+    {
+      "id": "e59",
+      "from": "apiReceitas",
+      "to": "auditlog",
+      "label": "audita sem valores"
+    },
+    {
+      "id": "e60",
+      "from": "apiReceitas",
+      "to": "receitasCount",
+      "label": "contagem exposta pela API"
     }
   ],
   "cards": [

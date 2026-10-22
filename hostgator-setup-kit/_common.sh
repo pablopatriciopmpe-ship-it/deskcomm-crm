@@ -448,8 +448,9 @@ valor_compose() { printf '"%s"' "$(printf '%s' "${1-}" | sed 's/[\\"$]/\\&/g')";
 # O compose oficial aponta o GoTrue para `supabase-mail`, que não existe em
 # produção: "esqueci a senha" e a confirmação de cadastro não chegariam. O SMTP
 # do CRM (#1176) é a fonte, na MESMA precedência de lib/email/config.ts: a
-# linha da tela /admin/email, se existe; senão o .env. Sai 1 (e não toca em
-# nada) quando o CRM não tem SMTP — quem chama avisa o dono.
+# linha da tela /admin/email, se existe; senão o .env. Sem SMTP, a Resend do
+# CRM (resend_da_instalacao), que é o que o app usa nesse caso. Sai 1 (e não
+# toca em nada) quando o CRM não tem nenhum dos dois — quem chama avisa o dono.
 sincronizar_smtp_do_gotrue() {
   local env_sb sep=$'\x1f' linha="" host porta usuario senha remetente nome
   env_sb="$(dir_do_supabase)/.env"
@@ -465,13 +466,50 @@ sincronizar_smtp_do_gotrue() {
     host="${SMTP_HOST:-}"; porta="${SMTP_PORT:-587}"; usuario="${SMTP_USERNAME:-}"
     senha="${SMTP_PASSWORD:-}"; remetente="${SMTP_FROM_EMAIL:-}"; nome="${SMTP_FROM_NAME:-}"
   fi
-  [ -n "$host" ] && [ -n "$remetente" ] || return 1
+  if [ -z "$host" ] || [ -z "$remetente" ]; then
+    # Sem SMTP o app envia pela Resend (lib/email/roteador.ts) — e o GoTrue também pode.
+    linha="$(resend_da_instalacao)" || return 1
+    IFS="$sep" read -r senha remetente <<<"$linha"
+    host=smtp.resend.com; porta=465; usuario=resend
+  fi
   set_env_var "$env_sb" SMTP_HOST "$(valor_compose "$host")"
   set_env_var "$env_sb" SMTP_PORT "${porta:-587}"
   set_env_var "$env_sb" SMTP_USER "$(valor_compose "$usuario")"
   set_env_var "$env_sb" SMTP_PASS "$(valor_compose "$senha")"
   set_env_var "$env_sb" SMTP_ADMIN_EMAIL "$(valor_compose "$remetente")"
   set_env_var "$env_sb" SMTP_SENDER_NAME "$(valor_compose "${nome:-${APP_NAME:-DeskcommCRM}}")"
+}
+
+# A Resend também fala SMTP (smtp.resend.com:465, usuário `resend`, senha = a
+# chave). Sem isto, a instalação com e-mail SÓ pela Resend deixava o GoTrue no
+# `supabase-mail` de mentira, e o cadastro por convite morria em 500 "Error
+# sending confirmation email" (medido numa VPS v1.85.0).
+#
+# Mesma precedência de valorDaInstalacao (lib/instalacao/config.ts), chave a
+# chave: a linha de `platform_config` manda, inclusive vazia; sem linha, o
+# .env; banco que não respondeu, o .env. O segredo da tela é AES-256-GCM com a
+# AI_CRED_AES_KEY, que mora no app e não no banco: quem abre o envelope é o Node
+# do contêiner do app, e a chave de cifra nunca sai dele. Envelope que não abre
+# vale vazio, como no app. Imprime "chave<US>remetente"; sai 1 sem os dois.
+resend_da_instalacao() {
+  local sep=$'\x1f' linhas chave eh valor ct iv tag
+  local api="${RESEND_API_KEY:-}" de="${RESEND_FROM_EMAIL:-}"
+  linhas="$(psql_run -tA -F "$sep" -c "select chave, eh_segredo, coalesce(valor,''),
+      coalesce(encode(ciphertext,'hex'),''), coalesce(encode(iv,'hex'),''), coalesce(encode(tag,'hex'),'')
+    from public.platform_config where chave in ('RESEND_API_KEY','RESEND_FROM_EMAIL')" 2>/dev/null)" || linhas=""
+  while IFS="$sep" read -r chave eh valor ct iv tag; do
+    if [ "$eh" = t ]; then
+      valor="$(printf '%s %s %s' "$ct" "$iv" "$tag" | (cd "${PROJECT_DIR:-$PWD}" && dc exec -T app node -e \
+        "const [c,i,t]=require('fs').readFileSync(0,'utf8').trim().split(' ').map(h=>Buffer.from(h,'hex'));const d=require('crypto').createDecipheriv('aes-256-gcm',Buffer.from(process.env.AI_CRED_AES_KEY||'','base64'),i);d.setAuthTag(t);process.stdout.write(Buffer.concat([d.update(c),d.final()]).toString('utf8'))") 2>/dev/null)" || valor=""
+    fi
+    case "$chave" in
+      RESEND_API_KEY) api="$valor" ;;
+      RESEND_FROM_EMAIL) de="$valor" ;;
+    esac
+  done <<<"$linhas"
+  api="$(printf '%s' "$api" | tr -d '[:space:]')"; de="$(printf '%s' "$de" | tr -d '[:space:]')"
+  [ -n "$api" ] && [ -n "$de" ] || return 1
+  printf '%s%s%s' "$api" "$sep" "$de"
 }
 
 # ── `so_convite` fecha o caminho DIRETO do GoTrue (#1653) ────────────────────
@@ -688,6 +726,15 @@ atualizar_supabase_single_server() {
   # aviso, não saída 1: o CRM segue atualizável.
   if sincronizar_signup_mode_do_gotrue; then
     dc_supabase up -d --no-deps auth >/dev/null 2>&1 || c_ylw "⚠ Não consegui reiniciar o auth do Supabase com o modo de cadastro (#1653)."
+  fi
+  # Pelo mesmo motivo, o SMTP do GoTrue também é sincronizado aqui: a chamada do
+  # update.sh roda com o kit ANTIGO, que não conhece a Resend como SMTP. O auth
+  # só reinicia quando um VALOR do .env do Supabase mudou (ordenado: o
+  # set_env_var move a chave regravada para o fim, e ordem não é mudança).
+  local antes
+  antes="$(sort "$dir/.env" | cksum)"
+  if sincronizar_smtp_do_gotrue && [ "$(sort "$dir/.env" | cksum)" != "$antes" ]; then
+    dc_supabase up -d --no-deps auth >/dev/null 2>&1 || c_ylw "⚠ Não consegui reiniciar o auth do Supabase com o SMTP do CRM."
   fi
   return 0
 }
@@ -2375,6 +2422,10 @@ gravar_imagens() {
     set_env_var "$envfile" WAHA_IMAGE "$WAHA_IMAGE"
     c_ylw "$(t "  (WAHA trocado para a variante oficial ARM64: {1})" "$WAHA_IMAGE")"
   fi
+  # O par dos avisos com o app fechado mora aqui pelo MESMO motivo do WAHA
+  # acima: é a função que o update.sh antigo chama depois de reler o kit, então
+  # o par chega já na primeira atualização. E chega antes do pull e do `up -d`.
+  completar_par_vapid "$envfile"
 }
 
 # ── Os segredos da chamada de voz, no .env de quem já tinha instalado ────────
@@ -2414,6 +2465,96 @@ completar_segredos_da_voz() {  # completar_segredos_da_voz [envfile]
   done
 
   printf '%s' "${criados# }"
+}
+
+# ── O par VAPID: avisos com o app fechado (Web Push) ────────────────────────
+#
+# Nasce sozinho na instalação e na atualização, UMA vez, e nunca é trocado
+# (ADR-0006, D6): trocar o par desliga os avisos de todo aparelho já inscrito, e
+# cada atendente teria de religá-los à mão. Operador não edita `.env` para ter
+# push (docs/doctrine/packaging.md).
+#
+# A lacuna aqui é VALOR VAZIO, não só linha ausente — diferente de
+# `completar_segredos_da_voz`: o install grava `VAPID_*=""` em toda instalação,
+# então vazio é o padrão, não a escolha de alguém. Vazio é medido com a régua do
+# `trim()` do app (lib/notifications/vapid.ts): espaço e CR de um `.env` editado
+# no Windows contam como vazio, senão a tela pede para atualizar e a atualização
+# não faz nada.
+
+_b64url() { base64 | tr -d '\n=' | tr '/+' '_-'; }
+
+# Par P-256 só com openssl + coreutils (xxd não é garantido num Ubuntu mínimo).
+# Imprime "publica privada" em base64url sem padding. A chave fica só em memória.
+# Formato inesperado = falha, nunca lixo gravado.
+gerar_par_vapid() {
+  local pem hex pub priv
+  pem="$(openssl ecparam -name prime256v1 -genkey -noout 2>/dev/null)" || return 1
+  hex="$(printf '%s\n' "$pem" | openssl ec -outform DER 2>/dev/null | od -An -v -tx1 | tr -d ' \n')" || return 1
+  # SEC1 DER de P-256, 121 bytes:
+  #   30 77 02 01 01 04 20 <privada:32> a0 0a <oid> a1 44 03 42 00 04 <X:32> <Y:32>
+  [ "${#hex}" -eq 242 ] && [ "${hex:0:14}" = 30770201010420 ] && [ "${hex:112:2}" = 04 ] || return 1
+  pub="$(printf '%s\n' "$pem" | openssl ec -outform DER 2>/dev/null | tail -c 65 | _b64url)" || return 1
+  priv="$(printf '%s\n' "$pem" | openssl ec -outform DER 2>/dev/null | head -c 39 | tail -c 32 | _b64url)" || return 1
+  [ "${#pub}" -eq 87 ] && [ "${#priv}" -eq 43 ] || return 1
+  printf '%s %s\n' "$pub" "$priv"
+}
+
+# completar_par_vapid [envfile] — usada pelo install.sh (depois de escrever o
+# .env) e pela atualização (antes da decisão de versão e dentro de
+# `gravar_imagens`). Quando cria o par, deixa PAR_VAPID_CRIADO=1. Sempre devolve 0: o
+# push é opcional, e nem a instalação nem a atualização morrem por causa dele.
+completar_par_vapid() {
+  local envfile="${1:-.env}" pub priv par tmp
+  [ -f "$envfile" ] || return 0
+  # `export ` e recuo no começo da linha: o Compose lê as duas formas, então
+  # elas também são o par (senão o kit gravaria um segundo, e o Compose fica
+  # com o último — a troca que a D6 proíbe).
+  pub="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?VAPID_PUBLIC_KEY=//p' "$envfile" 2>/dev/null | tail -1 | tr -d "\"' \t\r")"
+  priv="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?VAPID_PRIVATE_KEY=//p' "$envfile" 2>/dev/null | tail -1 | tr -d "\"' \t\r")"
+
+  [ -n "$pub" ] && [ -n "$priv" ] && return 0
+  if [ -n "$pub$priv" ]; then
+    # Meia chave: gerar a outra quebraria o par, e trocar a que existe é a
+    # troca que a D6 proíbe. Quem decide é quem opera.
+    c_ylw "$(t "  ⚠ Só uma das duas chaves dos avisos com o app fechado (VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY) está no .env. Não gerei a outra, para não quebrar o par.")"
+    c_ylw "$(t "    Para o kit gerar um par novo, apague as duas linhas e rode: bash hostgator-setup-kit/update.sh")"
+    return 0
+  fi
+  if [ ! -w "$envfile" ]; then
+    # Montagem somente-leitura ou permissão errada: não é erro daqui, mas a tela
+    # manda atualizar, e a atualização calada não diria por que nada mudou.
+    c_ylw "$(t "  ⚠ Não criei as chaves dos avisos com o app fechado: não consigo escrever no .env. Confira a permissão do arquivo e rode a atualização de novo.")"
+    return 0
+  fi
+
+  if ! par="$(gerar_par_vapid)"; then
+    # Falha fechado na ação (nada gravado) e aberto na informação (o aviso).
+    c_ylw "$(t "  ⚠ Não consegui gerar as chaves dos avisos com o app fechado; o resto segue normal. Para tentar de novo: bash hostgator-setup-kit/update.sh")"
+    return 0
+  fi
+  pub="${par% *}"; priv="${par#* }"
+
+  # As duas chaves numa escrita só: dois `set_env_var` seguidos deixariam meia
+  # chave se o processo morresse entre eles — e a regra acima se recusaria, para
+  # sempre, a curar o que o próprio kit estragou.
+  tmp="${envfile}.tmp.$$"
+  # `umask 077`: a cópia leva todos os segredos do .env e não pode passar um
+  # instante legível por outros usuários antes do chmod.
+  if ! ( umask 077
+         { { grep -vE '^[[:space:]]*(export[[:space:]]+)?VAPID_(PUBLIC|PRIVATE)_KEY=' "$envfile" || true; } \
+           && printf 'VAPID_PUBLIC_KEY=%s\nVAPID_PRIVATE_KEY=%s\n' "$pub" "$priv"; } > "$tmp" ) \
+     || ! chmod 600 "$tmp" || ! mv "$tmp" "$envfile"; then
+    rm -f "$tmp"
+    c_ylw "$(t "  ⚠ Não consegui gerar as chaves dos avisos com o app fechado; o resto segue normal. Para tentar de novo: bash hostgator-setup-kit/update.sh")"
+    return 0
+  fi
+  # O ambiente também: o `load_env` exportou o vazio, e é dele que o compose lê
+  # o que interpola.
+  VAPID_PUBLIC_KEY="$pub"; VAPID_PRIVATE_KEY="$priv"
+  export VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
+  # Para quem chamou saber que precisa subir o app de novo (o retorno é sempre 0).
+  PAR_VAPID_CRIADO=1
+  c_grn "$(t "✓ chaves dos avisos com o app fechado criadas (uma vez só: não troque, trocar desliga os avisos de todo aparelho já inscrito)")"
 }
 
 # Grava (ou reescreve) uma chave no .env — sem duplicar linha se ela já existe.

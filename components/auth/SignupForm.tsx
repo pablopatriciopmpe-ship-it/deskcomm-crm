@@ -147,6 +147,16 @@ export function SignupForm({
             "Esta instalação aceita cadastro apenas por convite. Se você foi convidado, use o link que chegou no seu e-mail.",
           ),
         );
+      } else if (res.error === "email_indisponivel") {
+        // Sem "Tente novamente": o e-mail de confirmação não sai enquanto a
+        // instalação não tiver e-mail configurado, e só quem administra resolve.
+        setServerError(
+          t(
+            convite
+              ? "Não conseguimos enviar o e-mail de confirmação, porque o envio de e-mails desta instalação não está configurado. Tentar de novo não resolve: avise quem convidou você."
+              : "Não conseguimos enviar o e-mail de confirmação, porque o envio de e-mails desta instalação não está configurado. Tentar de novo não resolve: avise quem administra o sistema.",
+          ),
+        );
       } else {
         setServerError(t("Não foi possível criar a conta. Tente novamente."));
       }
@@ -234,7 +244,7 @@ export function SignupForm({
         </div>
       )}
       <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">{t("Email")}</Label>
         <Input
           id="email"
           type="email"

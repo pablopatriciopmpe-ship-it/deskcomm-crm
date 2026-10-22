@@ -149,7 +149,7 @@ export async function reenviarEntrega(
   // ⚠️ PRIMEIRO: o acesso deste pedido foi DESTRUÍDO de propósito?
   //
   // A redação de LGPD e a revogação por reembolso derrubam o acesso pondo
-  // `token_sha256` em NULO (é o que a 0694 registra em `modulo_secoes_lgpd`), e
+  // `token_sha256` em NULO (é o que a 0718 registra em `modulo_secoes_lgpd`), e
   // elas NÃO mexem em `revogada_em`. Então a linha segue "viva" para o índice
   // parcial, e um reenvio ingênuo a revogaria e criaria um token novo —
   // devolvendo o acesso que um apagamento de LGPD tinha acabado de destruir.

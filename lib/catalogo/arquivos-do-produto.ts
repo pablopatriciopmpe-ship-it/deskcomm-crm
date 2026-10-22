@@ -5,26 +5,26 @@
  * Não confundir com `lib/catalogo/fotos.ts`: foto é VITRINE, o que o cliente vê
  * antes de comprar. Isto é o que ele recebe DEPOIS de pagar, e por isso mora num
  * bucket privado, sem policy nenhuma, saindo só por URL assinada (migration
- * 0694).
+ * 0718).
  *
  * ── Por que os números estão duplicados aqui ─────────────────────────────────
  *
- * Eles espelham o `storage.buckets` da 0694 e o CHECK de `bytes` da mesma
+ * Eles espelham o `storage.buckets` da 0718 e o CHECK de `bytes` da mesma
  * migration. Um teto aqui diferente do de lá faria a rota aceitar o que o
  * Storage recusa, e a pessoa receberia "erro ao subir o arquivo" sem saber por
  * quê — é a mesma razão escrita em `fotos.ts`.
  */
 
-/** O bucket PRIVADO da 0694. Sem policy: só o service role alcança. */
+/** O bucket PRIVADO da 0718. Sem policy: só o service role alcança. */
 export const BUCKET_DOS_ARQUIVOS = "produtos-digitais";
 
-/** 500 MB: o `file_size_limit` do bucket e o teto do CHECK `bytes` da 0694. */
+/** 500 MB: o `file_size_limit` do bucket e o teto do CHECK `bytes` da 0718. */
 export const TAMANHO_MAXIMO_DO_ARQUIVO = 524_288_000;
 
 /**
  * Quantos arquivos um produto entrega.
  *
- * ⚠️ Este número NÃO vem do schema — não há CHECK de cardinalidade na 0694. É
+ * ⚠️ Este número NÃO vem do schema — não há CHECK de cardinalidade na 0718. É
  * decisão de produto, e mora aqui para a tela e a rota dizerem o mesmo: a página
  * de entrega lista todos e assina uma URL para cada um, então uma lista sem teto
  * é uma página que demora e um pedido que consome assinaturas sem fim. Dez cobre
@@ -35,7 +35,7 @@ export const MAXIMO_DE_ARQUIVOS = 10;
 /**
  * Os tipos que o UPLOAD aceita.
  *
- * ⚠️ É um SUBCONJUNTO do `allowed_mime_types` do bucket (0694), e isso é de
+ * ⚠️ É um SUBCONJUNTO do `allowed_mime_types` do bucket (0718), e isso é de
  * propósito: a lista de lá tem `text/markdown` e `text/plain`, que esta NÃO
  * tem. Mais estreito é seguro — a rota promete menos do que o Storage aceita,
  * e o modo de falha que `fotos.ts` adverte (a rota aceitar o que o Storage

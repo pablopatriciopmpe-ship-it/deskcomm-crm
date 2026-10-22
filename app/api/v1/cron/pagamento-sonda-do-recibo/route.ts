@@ -3,7 +3,7 @@
  *
  * ─── Por que esta rota existe ───────────────────────────────────────────────
  *
- * A confirmação de pagamento da 0693 não vem de API. O `payment_check` do
+ * A confirmação de pagamento da 0717 não vem de API. O `payment_check` do
  * provedor é rota morta (devolve a mesma resposta para parâmetros válidos,
  * inválidos e corpo vazio) e o webhook dele não é assinado. O que resta é ler o
  * recibo PÚBLICO em `recibo.infinitepay.io` — e leitura de HTML de terceiro
@@ -56,7 +56,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-/** O kind da Central (migration 0695). */
+/** O kind da Central (migration 0719). */
 export const KIND_DO_AVISO = "conferencia_do_recibo_quebrada" as const;
 
 /** Quantas organizações a rodada sonda. O defeito é global; isto é amostra. */

@@ -1,6 +1,6 @@
 /**
  * POST /api/v1/webhooks/pagamento/[token] — o aviso de pagamento da cobrança
- * que a ORGANIZAÇÃO faz ao cliente dela (migration 0693).
+ * que a ORGANIZAÇÃO faz ao cliente dela (migration 0717).
  *
  * Não confundir com `/webhooks/cobranca/[provedor]`, que é a assinatura DA
  * INSTALAÇÃO e tem provedor no caminho porque a conta é uma só. Aqui a conta é
