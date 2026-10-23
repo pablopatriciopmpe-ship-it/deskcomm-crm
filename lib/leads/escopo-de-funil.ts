@@ -93,6 +93,24 @@ export const ALVO_DE_FUNIL: Record<string, AlvoDeFunil> = {
   // das ferramentas de agenda, logo abaixo, descreve.
   crm_enroll_followup_flow: "funil_vem_do_contato",
 
+  // ---- cobrar: a escrita de MAIOR dano do inventário, e por isso escopada ----
+  //
+  // `crm_cobrar_produto` cria cobrança de verdade, com dinheiro, e manda o link
+  // na conversa. Recebe `contact_id` e `conversation_id` OBRIGATÓRIOS e nenhum
+  // `lead_id` — mesma forma de `crm_enroll_followup_flow` acima, e por isso o
+  // mesmo alvo.
+  //
+  // Por que NÃO `sem_funil`: um agente marcado só no funil A poderia cobrar o
+  // cliente cujo negócio aberto está no funil B. Dinheiro é o pior lugar para o
+  // escopo não valer.
+  //
+  // Por que o comprador NOVO não é atingido: contato sem negócio aberto LIBERA —
+  // está escrito no `case "funil_vem_do_contato"` abaixo, com a razão. Quem chega
+  // no WhatsApp e compra na hora não está em funil nenhum, e não há escopo a
+  // ferir. Contato com negócios abertos AMBÍGUOS é recusado como `indisponivel`,
+  // igual às ferramentas de agenda: cobrar no escuro é pior que não cobrar.
+  crm_cobrar_produto: "funil_vem_do_contato",
+
   // ---- agenda: DECLARADAS `sem_funil`, e a declaração é o ponto ----
   //
   // As três operam por `contact_id` (marcar) ou `appointment_id` (remarcar e

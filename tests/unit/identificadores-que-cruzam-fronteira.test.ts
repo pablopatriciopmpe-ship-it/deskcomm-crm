@@ -170,6 +170,14 @@ const SITES: { arquivo: string; fronteira: string; papel?: "gerador" | "validado
   // package.ts. Nada de texto digitado pelo operador entra na chave.
   { arquivo: "lib/ai/skills/package-files.ts", fronteira: "storage.chave-de-objeto" },
   { arquivo: "app/api/v1/products/[id]/fotos/route.ts", fronteira: "storage.chave-de-objeto" },
+  // O ENTREGÁVEL do produto digital (0718): o que o comprador recebe depois de
+  // pagar. Mesmo molde de chave da rota irmã de fotos — `{org}/{produto}/{uuid}.{ext}`,
+  // os três pedaços gerados no SERVIDOR (uuid v4, alfabeto ASCII) e nada do nome
+  // que o operador mandou. A extensão sai da ASSINATURA dos bytes
+  // (`farejarEntregavel`), nunca do content-type declarado, e a leitura confere a
+  // forma de volta (`arquivoPertenceAoProduto`) porque quem lê é service role, sem
+  // RLS. Bucket PRIVADO `produtos-digitais`: sai só por URL assinada.
+  { arquivo: "app/api/v1/products/[id]/arquivos/route.ts", fronteira: "storage.chave-de-objeto" },
   // #2526: a imagem que o operador carrega na Resposta rápida. O caminho é gerado
   // aqui (`${orgId}/templates/${templateId}/uuid.jpg|png`) — a forma é a mesma do
   // registro acima: UUID v4 de alfabeto ASCII + `.jpg`/`.png` conhecido pela
