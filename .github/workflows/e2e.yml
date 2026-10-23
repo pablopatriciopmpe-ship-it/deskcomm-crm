@@ -244,7 +244,13 @@ jobs:
     # O conserto certo não é afrouxar: é repartir. Por isso esta branch traz o
     # rebalanceamento junto (o #1174), e com as partes em ~18 min o portão de 28
     # deixa de ser apertado sem que ninguém precise ceder.
-    timeout-minutes: 30
+    # ⚠️ DIVERGÊNCIA DESTA CÓPIA — 30 no original.
+    #
+    # Cinco das seis partes batiam 28 min e saíam com `exit 124` (o `timeout`
+    # cortou); a parte 4 fechava em 10. Runner público, não o executor próprio
+    # do original — e o CONTROLE confirma: um PR trivial da `main` pura, sem uma
+    # linha nossa, teve as SEIS partes cortadas igual (PR #5).
+    timeout-minutes: 60
     # ── A CHAVE É POR NÚMERO DO PR — SEM O SHA DO HEAD (#2449) ─────────────
     #
     # Medido no #2437 (06/10/2026): o run 37491737771, do head ATUAL
@@ -1456,14 +1462,17 @@ jobs:
           {
             echo "T0_JOB=$(date -u +%s)"
             # Orçamento declarado: é aqui que a parte deveria caber, com o
-            # relógio do job inteiro. 24 min < teto de propósito — o aviso vem
-            # ANTES do corte, não no lugar dele.
-            echo "ORCAMENTO_SEGUNDOS=1440"
-            # O MESMO teto do `timeout-minutes` do job (30 min). Dois números
+            # relógio do job inteiro. 55 min < teto de propósito — o aviso vem
+            # ANTES do corte, não no lugar dele. (24 min no original, que tem
+            # teto de 30; esta cópia roda no runner público — ver o
+            # `timeout-minutes` do job.)
+            echo "ORCAMENTO_SEGUNDOS=3300"  # ver o `timeout-minutes` do job: divergência desta cópia
+            # O MESMO teto do `timeout-minutes` do job (60 min nesta cópia, 30
+            # no original). Dois números
             # medindo o mesmo relógio divergem: a catraca é
             # tests/unit/e2e-avisa-antes-do-teto.test.ts, que reprova se este
             # valor e o `timeout-minutes` deixarem de concordar.
-            echo "TETO_SEGUNDOS=1800"
+            echo "TETO_SEGUNDOS=3600"  # = `timeout-minutes: 60`; os dois medem o MESMO relogio
             # Corte antecipado, 2 min antes do teto. A margem paga o que o
             # relógio de passo NÃO vê: o que o runner faz antes do primeiro passo
             # (até o #983 incluía ~51 s de `Initialize containers` em toda
@@ -1865,6 +1874,20 @@ jobs:
       - name: Build de produção (com o ambiente do E2E)
         run: pnpm e2e:build
         env:
+          # ⚠️ DIVERGÊNCIA DESTA CÓPIA, e a razão está medida: o build de
+          # produção estoura o heap na fase de type-check nos runners PÚBLICOS do
+          # GitHub (`FATAL ERROR: Ineffective mark-compacts near heap limit`).
+          # O repositório original não sente porque os jobs pesados dele podem ir
+          # para o executor próprio (ver `EXECUTOR_PROPRIO` no CLAUDE.md); aqui
+          # eles rodam no runner público.
+          #
+          # Medido com CONTROLE: um PR do Dependabot, sem uma linha de código
+          # nosso, estoura exatamente igual — então não é o nosso diff que não
+          # cabe, é o build do projeto contra o teto padrão do Node.
+          #
+          # O `ci.yml` já declara 6144 para o typecheck (linha ~254); isto é o
+          # mesmo remédio no passo que faltava.
+          NODE_OPTIONS: --max-old-space-size=8192
           NEXT_TELEMETRY_DISABLED: "1"
           # `off`, NÃO vazio. Vazio seleciona o Sentry DA COMUNIDADE — está
           # escrito em lib/sentry/dsn.ts:8-10, e é o default de propósito num

@@ -30,6 +30,16 @@ export const PUBLIC_PATHS: RegExp[] = [
   // acima — vem de outro site, o cookie Strict não viaja, e a rota é só a ponte
   // para um destino FIXO (`app/cobranca/volta/route.ts`), sem efeito.
   /^\/cobranca\/volta$/,
+  // A PÁGINA DE ENTREGA do produto digital (0718). Quem chega aqui é o
+  // NAVEGADOR de quem comprou: ele nunca teve conta nesta instalação e nunca
+  // vai ter. Sem esta linha o proxy devolve 401 antes de a rota existir, e
+  // quem pagou recebe um erro no lugar do produto.
+  //
+  // "Público" aqui quer dizer "o proxy não decide" — nunca "sem
+  // autenticação": quem autentica é o token do caminho, conferido pelo
+  // SHA-256 dentro da página. Um segmento só, para sub-path futuro não nascer
+  // público de carona.
+  /^\/entrega\/[^/]+$/,
   /^\/403$/,
   /^\/admin\/forbidden$/,
   /^\/404$/,

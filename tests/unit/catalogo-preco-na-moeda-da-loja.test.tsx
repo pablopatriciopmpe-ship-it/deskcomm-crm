@@ -73,6 +73,7 @@ function montar(itens: Produto[]) {
       porPagina={50}
       buscaInicial=""
       urlsDasFotos={{}}
+      arquivosPorProduto={{}}
       podeEditar={false}
       textos={TEXTOS}
     />,

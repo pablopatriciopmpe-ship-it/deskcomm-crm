@@ -10199,6 +10199,12 @@ alter table public.agent_inbox_items
     -- lista pelas razões de sempre (bloco único por constraint, #159).
     'task_due',
     'task_overdue',
+    -- (migration 0719) a conferencia do recibo do provedor parou de
+    -- reconhecer a pagina. Enquanto durar, nenhuma venda e confirmada e
+    -- nenhum produto sai. Entra NESTA lista e no FIM dela, pelas duas razoes
+    -- de sempre (bloco unico por constraint, #159; e a janela de 2000
+    -- caracteres que tests/unit/midia-nao-lida.test.ts varre).
+    'conferencia_do_recibo_quebrada',
     'other'
   ));
 
@@ -14531,7 +14537,10 @@ alter table public.webhook_events_log
     -- (migration 0601) os provedores de cobrança do revendedor. A linha deles
     -- nasce com organization_id nulo e corpo {id,type}: é ponteiro, nunca o
     -- corpo do provedor, e fica invisível ao tenant pela própria policy.
-    'stripe', 'asaas'
+    'stripe', 'asaas',
+    -- (migration 0717) a cobranca que cada organizacao faz ao cliente dela.
+    -- Sem esta entrada o INSERT da rota do webhook e recusado pelo CHECK.
+    'infinitepay'
   ));
 
 -- ---- a marca da instalação sai do .env e vai para o banco (migration 0155) ----
@@ -56030,6 +56039,1009 @@ revoke all on function public.fn_conversa_remove_trechos_do_rag(uuid,uuid) from 
 grant execute on function public.fn_conversa_remove_trechos_do_rag(uuid,uuid) to service_role;
 
 notify pgrst,'reload schema';
+-- ---- cobrança avulsa por organização: conta do gateway, tentativa e item do pedido (migration 0717) ----
+-- 0717: cobrança avulsa por organização — conta do gateway, tentativa de cobrança e item do pedido
+--
+-- ─── O defeito ───────────────────────────────────────────────────────────────
+--
+-- O CRM conversa, qualifica e registra o pedido, mas não cobra. Quem vende
+-- infoproduto por WhatsApp — ou a clínica que quer sinal antes de segurar o
+-- horário — fecha a conversa aqui e manda o cliente para fora. O pagamento
+-- volta (ou não) sem ninguém ligar as duas pontas, e o pedido fica `pending`
+-- para sempre.
+--
+-- ─── Por que NÃO reaproveitar o que já existe ───────────────────────────────
+--
+-- `cobranca_*` (0583/0601) é a assinatura DA INSTALAÇÃO: uma conta de gateway
+-- para o produto inteiro, em `platform_config`, estado por organização-cliente.
+-- Usar a mesma conta aqui faria todas as organizações receberem no mesmo banco.
+--
+-- `tenant_integrations` é por organização e até tem `webhook_secret_encrypted`,
+-- mas o CHECK de `provider` aceita só nuvemshop/vtex/shopify. Alargá-lo à mão é
+-- exatamente o que a 0623 documenta como armadilha: a migration seguinte que
+-- recriar a lista derruba a atualização de quem alargou.
+--
+-- ─── O provedor, e por que ele encolheu esta migration ──────────────────────
+--
+-- O provedor é a **InfinitePay (Checkout Integrado)**, escolhida em 15/10/2026
+-- depois de teste real de R$ 1 contra Asaas e AbacatePay. O que decidiu:
+--
+--   * ela **não exige CPF** do comprador (o Asaas exige para criar o cliente, o
+--     que obrigaria o agente a pedir CPF no meio da conversa);
+--   * o preço vai em **centavos**, como as colunas desta casa (o Asaas usa
+--     reais decimais, que é arredondamento em cima de dinheiro);
+--   * e **não há chave de API**: `POST /links` identifica a conta só pelo
+--     `handle` (a InfiniteTag sem `$`), que não é segredo — é como os clientes
+--     daquela organização pagam.
+--
+-- Por isso NÃO existe aqui o trio `*_encrypted`/`*_iv`/`*_tag` de
+-- `ai_provider_credentials`. Cifra que não protege nada continua sendo
+-- superfície à toa. O único segredo é o token do caminho do webhook, que é
+-- NOSSO — e ele entra aqui como SHA-256, nunca em claro (ver a coluna).
+--
+-- ─── A trava que substitui a assinatura do webhook ──────────────────────────
+--
+-- O webhook da InfinitePay **não tem assinatura, segredo nem cabeçalho de
+-- autenticação** — medido, não suposto. E o endpoint `payment_check` que a
+-- documentação deles oferece para conferir pagamento é **rota morta**: devolve a
+-- mesma resposta para parâmetros válidos, inválidos e corpo vazio. Então não há
+-- como validar o aviso pela API do provedor.
+--
+-- O que sobra são duas camadas independentes, e as duas são obrigatórias:
+--
+--   1. o token no CAMINHO da rota, que é servidor-a-servidor e
+--      nunca aparece no navegador do comprador (mesmo idioma das fontes de
+--      captação do núcleo);
+--   2. a conferência cruzada buscando o `receipt_url` que vem no aviso — página
+--      pública, sem login, que mostra valor e `transaction_nsu`.
+--
+-- A segunda é o que esta migration transforma em REGRA DE BANCO:
+-- `payment_charges_conferida_antes_de_paga` recusa `status = 'paid'` sem
+-- `conferido_pelo_recibo_em`. Uma rota com defeito, ou um aviso forjado por
+-- quem descobrisse o caminho, não consegue marcar venda paga — o banco recusa
+-- antes de qualquer entrega acontecer.
+--
+-- ─── As três peças ──────────────────────────────────────────────────────────
+--
+-- (A) A CONTA é por organização. O `handle` é público; o token do webhook não,
+--     e por isso ele mora aqui só como HASH. A tela lê pela view `_safe`, e o
+--     `authenticated` recebe SELECT apenas nas COLUNAS que não são segredo —
+--     grant por coluna, porque a view é `security_invoker` e sem privilégio na
+--     base o leitor levaria `permission denied` na própria view.
+--
+--     `pix_conferido_em` existe por um defeito medido do provedor: a chave PIX
+--     cadastrada na conta **não é verificável pela API**. Sem ela o link nasce
+--     com HTTP 200, o PIX aparece como opção, e só quebra na cara do cliente
+--     ("Fale para o vendedor cadastrar uma Chave Pix"). Como nenhuma chamada
+--     responde isso, o que resta é alguém conferir e carimbar — e a tela cobra o
+--     carimbo antes de deixar a organização vender.
+--
+-- (B) A TENTATIVA é separada do pedido porque um pedido tem várias: o cliente
+--     some e volta, o primeiro link vence, ele tenta de novo. E é aqui que
+--     mora o estado fino. `orders.status` aceita
+--     pending/paid/cancelled/fulfilled/shipped/delivered/refunded — não tem
+--     `expired` nem `disputed`, e alargar aquele CHECK é a armadilha da 0623.
+--     Então o pedido recebe o vocabulário grosso que já existe e quem precisa do
+--     detalhe lê aqui.
+--
+--     `metodo` nasce NULO de propósito: quem escolhe entre PIX e cartão é o
+--     comprador, na página do checkout, depois de a cobrança já existir.
+--
+-- (C) O ITEM guarda SNAPSHOT de nome e código. `product_id` é
+--     `on delete set null` e o produto é mutável: sem o snapshot, renomear o
+--     produto reescreve o que foi vendido no ano passado.
+--
+-- ─── Consistência entre organizações: gatilho, não chave composta ───────────
+--
+-- As ferramentas do agente rodam com service_role, que ignora RLS. Sem guarda,
+-- um item da organização A aponta para pedido da B. O idioma da casa para isto
+-- é o gatilho BEFORE INSERT OR UPDATE que lê o `organization_id` do pai e
+-- levanta 23514 (`fn_verificar_org_do_item_da_proposta`, 0464). Chave composta
+-- `(organization_id, id)` exigiria índice único novo em `orders` e em
+-- `catalog_products` — mudança nas tabelas DELES para resolver problema nosso.
+--
+-- Sem backfill: as três tabelas nascem vazias em toda instalação.
+
+-- ─── (A) conta do gateway, por organização ──────────────────────────────────
+
+create table if not exists public.payment_provider_credentials (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  provider text not null,
+  label text not null,
+
+  -- A InfiniteTag sem `$`. NÃO é segredo: é o identificador público de quem
+  -- recebe. Fica na tabela fechada por morar ao lado do token, não por si.
+  handle text not null,
+
+  -- O SHA-256 do token que vai no caminho do webhook — nunca o token em claro.
+  --
+  -- Em `tenant_integrations` o token de caminho é texto puro porque lá ele só
+  -- LOCALIZA a organização: quem autentica é `webhook_secret_*`, conferido sobre
+  -- o corpo. Aqui não há segredo nenhum para conferir — a InfinitePay não assina
+  -- o aviso —, então este token **autentica sozinho**. Token portador guardado
+  -- em claro é o anti-pattern 13 da casa, e o caminho de uma URL ainda vai para
+  -- log de proxy, de acesso e de diagnóstico da VPS.
+  --
+  -- Por isso no banco fica só o HASH. O token em claro não é guardado em lugar
+  -- nenhum: ele é DERIVADO por HMAC do segredo da instalação na hora de montar
+  -- a URL (`lib/pagamentos/token-do-webhook.ts`). Então a tela pode mostrá-lo
+  -- sempre que quem administra precisar reconfigurar o provedor — e um dump,
+  -- um backup ou uma leitura pela REST não levam o segredo, que é o que esta
+  -- coluna protege. (Este comentário dizia "plaintext mostrado UMA vez na
+  -- criação", que é o desenho de `api_tokens` e nunca foi o desta coluna:
+  -- esconder a URL depois da primeira vez impediria a reconfiguração sem
+  -- esconder nada de quem já administra a organização.)
+  webhook_path_token_sha256 text not null,
+
+  -- Os carimbos humanos do que a API não responde (ver cabeçalho). O par da
+  -- chave PIX nasceu aqui; o par do webhook entrou pela 0720, e os dois estão
+  -- NESTE bloco de propósito: um segundo bloco redefinindo a mesma view
+  -- `_safe` quebraria o `update.sh` (lição do #159 — a lista canônica se edita
+  -- onde ela está, nunca se reconstrói ao lado).
+  pix_conferido_em timestamptz,
+  pix_conferido_por uuid references auth.users(id) on delete set null,
+  webhook_conferido_em timestamptz,
+  webhook_conferido_por uuid references auth.users(id) on delete set null,
+
+  is_active boolean not null default true,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.payment_provider_credentials is
+  'Conta de gateway de pagamento de CADA organização (migration 0717). Não confundir com cobranca_* (0583), que é a assinatura DA INSTALAÇÃO. O provedor não usa chave de API: o handle é público e o único segredo é o token do webhook, guardado como SHA-256. authenticated lê só as colunas não-secretas, por grant de coluna; a tela usa payment_provider_credentials_safe.';
+
+comment on column public.payment_provider_credentials.pix_conferido_em is
+  'Quando alguém confirmou À MÃO que a chave PIX está cadastrada na conta do provedor. Existe porque isso não é verificável pela API: sem a chave, o link nasce 200, o PIX aparece, e só falha na tela do cliente.';
+
+alter table public.payment_provider_credentials
+  drop constraint if exists payment_provider_credentials_provider_check;
+alter table public.payment_provider_credentials
+  add constraint payment_provider_credentials_provider_check
+  check (provider in ('infinitepay'));
+
+-- Quem carimbou IMPLICA quando: `_por` preenchido exige `_em`. A volta NÃO é
+-- exigida de propósito. A bicondicional parecia mais forte e era um defeito:
+-- `_por` é `on delete set null`, então apagar o usuário que assinou zeraria só
+-- `_por` e a bicondicional recusaria o UPDATE — o DELETE em `auth.users`
+-- falharia, e com ele a remoção de usuário e a cascata de LGPD. O carimbo
+-- sobrevive à saída de quem assinou; a pergunta "quem disse que estava
+-- conferido?" continua respondida, e por quem responde de verdade:
+-- `api_audit_log`, que é append-only e não tem FK para o usuário.
+-- O hash tem forma fixa. Sem isto, um INSERT com o token EM CLARO na coluna
+-- passaria calado — e o segredo que esta migration tirou do banco voltaria por
+-- descuido de quem escreve a tela.
+alter table public.payment_provider_credentials
+  drop constraint if exists payment_provider_credentials_token_e_hash;
+alter table public.payment_provider_credentials
+  add constraint payment_provider_credentials_token_e_hash
+  check (webhook_path_token_sha256 ~ '^[0-9a-f]{64}$');
+
+-- (migration 0720) Para o clone que já tinha a tabela: `create table if not
+-- exists` acima não acrescenta coluna a tabela que já existe.
+alter table public.payment_provider_credentials
+  add column if not exists webhook_conferido_em timestamptz;
+alter table public.payment_provider_credentials
+  add column if not exists webhook_conferido_por uuid references auth.users(id) on delete set null;
+
+alter table public.payment_provider_credentials
+  drop constraint if exists payment_provider_credentials_conferencia_coerente;
+alter table public.payment_provider_credentials
+  add constraint payment_provider_credentials_conferencia_coerente
+  check (pix_conferido_por is null or pix_conferido_em is not null);
+
+alter table public.payment_provider_credentials
+  drop constraint if exists payment_provider_credentials_webhook_conferencia_coerente;
+alter table public.payment_provider_credentials
+  add constraint payment_provider_credentials_webhook_conferencia_coerente
+  check (webhook_conferido_por is null or webhook_conferido_em is not null);
+
+-- Uma conta ATIVA por organização e provedor. Parcial: a desativada fica como
+-- histórico (foi com ela que as cobranças antigas nasceram).
+create unique index if not exists payment_provider_credentials_ativa
+  on public.payment_provider_credentials (organization_id, provider)
+  where is_active;
+
+-- O token do caminho é a chave de roteamento do webhook: tem de ser único na
+-- instalação inteira, não só dentro da organização.
+create unique index if not exists payment_provider_credentials_path_token
+  on public.payment_provider_credentials (webhook_path_token_sha256);
+
+drop trigger if exists trg_payment_provider_credentials_touch
+  on public.payment_provider_credentials;
+create trigger trg_payment_provider_credentials_touch
+  before update on public.payment_provider_credentials
+  for each row execute function public.fn_touch_updated_at();
+
+-- A view que a tela lê: tudo menos o token. `security_invoker` para a RLS de
+-- quem consulta continuar valendo (mesmo desenho de ai_provider_credentials_safe).
+create or replace view public.payment_provider_credentials_safe
+  with (security_invoker = 'true') as
+  select id,
+         organization_id,
+         provider,
+         label,
+         handle,
+         pix_conferido_em,
+         pix_conferido_por,
+         is_active,
+         created_by,
+         created_at,
+         updated_at,
+         webhook_conferido_em,
+         webhook_conferido_por
+    from public.payment_provider_credentials;
+
+comment on view public.payment_provider_credentials_safe is
+  'payment_provider_credentials sem o hash do token do webhook (migration 0717). É por aqui que a tela lê. O handle aparece: ele é público.';
+
+alter table public.payment_provider_credentials enable row level security;
+revoke all on public.payment_provider_credentials from anon, authenticated;
+grant select, insert, update, delete
+  on public.payment_provider_credentials to service_role;
+
+-- ⚠️ `security_invoker` + base revogada de `authenticated` = view INÚTIL.
+--
+-- A view roda com o privilégio de QUEM CONSULTA, então o grant na view não
+-- substitui o privilégio na tabela de baixo: sem ele, quem administra abre a
+-- tela e leva `permission denied` na própria view "segura". As duas views
+-- `_safe` que já existiam na casa (ai_provider_credentials, external_db_
+-- connections) não revogam a base — este arquivo foi o primeiro a juntar as
+-- duas posturas, e elas não se encaixam.
+--
+-- A saída do Postgres para "precisa ler, mas não TUDO" é grant por COLUNA. O
+-- hash do token fica de fora da lista, então ele não é alcançável nem pela
+-- base, nem pela view, nem por um `select *` à mão pela REST. E a RLS continua
+-- valendo, que é o motivo de a view ser invoker.
+grant select (
+    id, organization_id, provider, label, handle,
+    pix_conferido_em, pix_conferido_por,
+    webhook_conferido_em, webhook_conferido_por,
+    is_active, created_by, created_at, updated_at
+  ) on public.payment_provider_credentials to authenticated;
+
+revoke all on public.payment_provider_credentials_safe from anon;
+grant select on public.payment_provider_credentials_safe to authenticated, service_role;
+
+drop policy if exists payment_provider_credentials_leitura on public.payment_provider_credentials;
+create policy payment_provider_credentials_leitura
+  on public.payment_provider_credentials for select to authenticated
+  using (
+    (organization_id in (select public.fn_user_org_ids())
+     and public.fn_role_at_least(organization_id, 'manager'))
+    or public.fn_is_platform_admin()
+  );
+
+-- ─── (B) tentativa de cobrança ──────────────────────────────────────────────
+
+create table if not exists public.payment_charges (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  order_id uuid not null references public.orders(id) on delete cascade,
+  credential_id uuid references public.payment_provider_credentials(id) on delete set null,
+
+  provider text not null,
+
+  -- O identificador da cobrança NO provedor. Na InfinitePay é o `invoice_slug`
+  -- do aviso — e não o `slug`, que é como a documentação deles o chama por
+  -- engano (medido na prática, 15/10/2026).
+  external_charge_id text,
+
+  -- Chega só com o pagamento, e é o que monta o endereço do recibo
+  -- (`recibo.infinitepay.io/<transaction_nsu>`), que é a nossa conferência.
+  transaction_nsu text,
+  receipt_url text,
+
+  -- PIX ou cartão: quem decide é o comprador na página, depois desta linha
+  -- existir. Por isso nasce NULO.
+  metodo text,
+
+  amount_cents bigint not null,
+  currency text not null default 'BRL',
+
+  status text not null default 'pending',
+
+  -- A InfinitePay devolve uma PÁGINA de checkout, não um "copia e cola". Some
+  -- daqui, portanto, o br_code: não existe BR Code para guardar.
+  checkout_url text,
+
+  expires_at timestamptz,
+  paid_at timestamptz,
+  refunded_at timestamptz,
+  disputed_at timestamptz,
+
+  -- O carimbo da segunda camada: quando o recibo público foi buscado e bateu.
+  -- SNAPSHOT de QUEM RECEBE, no momento em que a cobranca nasceu. Mesmo
+  -- idioma do snapshot de nome e codigo em `order_items`, e pela mesma razao:
+  -- a conta e MUTAVEL. Sem o retrato, trocar a InfiniteTag durante uma venda em
+  -- voo faria a conferencia do recibo comparar o recibo da conta ANTIGA (onde o
+  -- dinheiro caiu) com o handle da conta NOVA — nenhuma venda confirmaria, e o
+  -- cliente que pagou nao receberia. `credential_id` aponta para a LINHA, que
+  -- muda; esta coluna guarda o valor que valia.
+  handle_do_recebedor text,
+
+  conferido_pelo_recibo_em timestamptz,
+
+  -- A PORTA MANUAL. A conferência automática lê o HTML do recibo do provedor,
+  -- e isso quebra sozinho no dia em que eles mudarem a página. Sem uma segunda
+  -- origem de prova, o dono veria o dinheiro cair na conta dele e NÃO teria
+  -- como liberar a venda — fail-closed sem porta não é segurança, é trava.
+  --
+  -- Quem atesta é gente da equipe com acesso ao extrato, nunca o cliente:
+  -- comprovante mandado pelo comprador é a parte interessada falando de si, e
+  -- comprovante falso de PIX é fraude corriqueira no Brasil.
+  confirmado_a_mao_em timestamptz,
+  confirmado_a_mao_por uuid references auth.users(id) on delete set null,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.payment_charges is
+  'Uma linha por TENTATIVA de cobrança de um pedido (migration 0717). É aqui que mora o ciclo de vida fino do pagamento: orders.status não tem expired nem disputed, e alargar aquele CHECK é a armadilha da 0623. O id DESTA linha é o order_nsu enviado ao provedor — é assim que o aviso volta a encontrar a cobrança.';
+
+comment on column public.payment_charges.conferido_pelo_recibo_em is
+  'Quando o recibo público do provedor foi buscado e o valor bateu. O webhook da InfinitePay não é assinado e o payment_check deles é rota morta, então esta conferência é a única prova de pagamento — e o CHECK payment_charges_conferida_antes_de_paga a torna obrigatória.';
+
+alter table public.payment_charges
+  drop constraint if exists payment_charges_provider_check;
+alter table public.payment_charges
+  add constraint payment_charges_provider_check
+  check (provider in ('infinitepay'));
+
+-- O vocabulário é NOSSO, e por isso pode crescer sem tocar em tabela deles.
+alter table public.payment_charges
+  drop constraint if exists payment_charges_status_check;
+alter table public.payment_charges
+  add constraint payment_charges_status_check
+  check (status in ('pending', 'paid', 'expired', 'cancelled', 'refunded', 'disputed', 'failed'));
+
+alter table public.payment_charges
+  drop constraint if exists payment_charges_metodo_check;
+alter table public.payment_charges
+  add constraint payment_charges_metodo_check
+  check (metodo is null or metodo in ('pix', 'credit_card'));
+
+-- Dinheiro é inteiro positivo e a moeda é ISO-4217 em maiúscula. BRL é o único
+-- valor que os gateways brasileiros operam; a recusa acontece ANTES de cobrar,
+-- na aplicação, mas o banco não aceita o que a aplicação deixar passar.
+alter table public.payment_charges
+  drop constraint if exists payment_charges_amount_check;
+alter table public.payment_charges
+  add constraint payment_charges_amount_check
+  check (amount_cents > 0);
+
+alter table public.payment_charges
+  drop constraint if exists payment_charges_currency_check;
+alter table public.payment_charges
+  add constraint payment_charges_currency_check
+  check (currency = 'BRL');
+
+-- Coerência de uma via só: estado terminal exige a data, e a data exige o
+-- estado. Sem isto um `paid` sem `paid_at` passa, e o relatório financeiro
+-- conta uma venda que não sabe quando aconteceu.
+alter table public.payment_charges
+  drop constraint if exists payment_charges_datas_coerentes;
+alter table public.payment_charges
+  add constraint payment_charges_datas_coerentes
+  check (
+    -- ⚠️ A versão anterior exigia `(status='paid') = (paid_at is not null)`, e
+    -- isso OBRIGAVA A APAGAR `paid_at` para estornar: ao virar `refunded`, o
+    -- lado esquerdo fica falso e o direito verdadeiro. Ou se destruía a data do
+    -- pagamento — dado financeiro — ou o estorno era recusado pelo banco.
+    --
+    -- A regra certa não é sobre o estado ATUAL, é sobre o que aconteceu:
+    -- estornar e contestar pressupõem ter recebido, então os três carregam
+    -- `paid_at`. O que é exclusivo de cada estado continua sendo a data dele.
+    (status in ('paid', 'refunded', 'disputed')) = (paid_at     is not null) and
+    (status = 'refunded')                        = (refunded_at is not null) and
+    (status = 'disputed')                        = (disputed_at is not null)
+  );
+
+-- A TRAVA. Marcar pago sem ter conferido o recibo é o caminho pelo qual um
+-- aviso forjado viraria entrega de produto. O banco recusa, e recusa antes de
+-- qualquer efeito: é BEFORE por ser CHECK, e vale para a rota, para o worker e
+-- para quem escrever à mão com a service key.
+alter table public.payment_charges
+  drop constraint if exists payment_charges_conferida_antes_de_paga;
+alter table public.payment_charges
+  add constraint payment_charges_conferida_antes_de_paga
+  check (
+    status not in ('paid', 'refunded', 'disputed')
+    -- A automática OU a atestação humana. Duas origens, as duas auditadas, e
+    -- nenhuma delas é o cliente.
+    or conferido_pelo_recibo_em is not null
+    or confirmado_a_mao_em is not null
+  );
+
+-- Quem atestou e quando andam juntos: um sem o outro é registro que não
+-- responde "quem disse que entrou?" — e é essa pergunta que a auditoria faz
+-- quando uma venda liberada à mão vira disputa.
+alter table public.payment_charges
+  drop constraint if exists payment_charges_atestacao_coerente;
+alter table public.payment_charges
+  add constraint payment_charges_atestacao_coerente
+  check ((confirmado_a_mao_em is null) = (confirmado_a_mao_por is null));
+
+-- O RECIBO SÓ CONFIRMA UMA COBRANÇA. Sem isto, o mesmo `transaction_nsu` serve
+-- para carimbar várias cobranças: quem tivesse o token do caminho mandaria o
+-- mesmo recibo (um recibo legítimo qualquer, do valor certo) para liberar uma
+-- cobrança atrás da outra. Parcial porque o nsu só chega com o pagamento.
+create unique index if not exists payment_charges_transacao_unica
+  on public.payment_charges (organization_id, transaction_nsu)
+  where transaction_nsu is not null;
+
+-- A IDEMPOTÊNCIA da cobrança: o gateway reentrega, e duas linhas para a mesma
+-- cobrança remota virariam duas vendas. Parcial porque `external_charge_id` é
+-- nulo entre o insert e a resposta do gateway (a chamada está em voo).
+create unique index if not exists payment_charges_externa_unica
+  on public.payment_charges (organization_id, provider, external_charge_id)
+  where external_charge_id is not null;
+
+create index if not exists payment_charges_pedido_idx
+  on public.payment_charges (organization_id, order_id, created_at desc);
+
+-- Quem a reconciliação relê: cobrança que ainda pode mudar de estado sozinha.
+create index if not exists payment_charges_a_reconciliar_idx
+  on public.payment_charges (organization_id, expires_at)
+  where status = 'pending';
+
+drop trigger if exists trg_payment_charges_touch on public.payment_charges;
+create trigger trg_payment_charges_touch
+  before update on public.payment_charges
+  for each row execute function public.fn_touch_updated_at();
+
+-- ─── (C) item do pedido ─────────────────────────────────────────────────────
+
+create table if not exists public.order_items (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  order_id uuid not null references public.orders(id) on delete cascade,
+  product_id uuid references public.catalog_products(id) on delete set null,
+
+  -- O snapshot: é isto que preserva o que foi vendido quando o produto muda.
+  nome text not null,
+  codigo text,
+
+  quantidade integer not null default 1,
+  preco_unitario_cents bigint not null,
+  desconto_cents bigint not null default 0,
+  position integer not null default 0,
+
+  -- COMO o item entrou no pedido. Hoje só `principal` é escrito: o adicional
+  -- (order bump) saiu desta entrega porque não havia tela nem consumidor para
+  -- ele — tabela sem porta é peso morto pela doutrina da casa. A coluna fica
+  -- porque "como este item entrou" é propriedade do próprio item, não da
+  -- funcionalidade que o colocou ali, e `order_items` é registro do que foi
+  -- vendido: um item que amanhã entrar por oferta precisa ser distinguível do
+  -- que o cliente pediu, inclusive nos pedidos já fechados.
+  origem text not null default 'principal',
+
+  created_at timestamptz not null default now()
+);
+
+comment on table public.order_items is
+  'Item de um pedido, com SNAPSHOT de nome e código (migration 0717). Formato de crm_proposal_items. product_id é on delete set null e o produto é mutável: sem o snapshot, renomear o produto reescreve o que foi vendido no ano passado.';
+
+alter table public.order_items
+  drop constraint if exists order_items_quantidade_check;
+alter table public.order_items
+  add constraint order_items_quantidade_check
+  check (quantidade > 0);
+
+alter table public.order_items
+  drop constraint if exists order_items_valores_check;
+alter table public.order_items
+  add constraint order_items_valores_check
+  check (preco_unitario_cents >= 0 and desconto_cents >= 0
+         and desconto_cents <= preco_unitario_cents * quantidade);
+
+alter table public.order_items
+  drop constraint if exists order_items_origem_check;
+alter table public.order_items
+  add constraint order_items_origem_check
+  check (origem in ('principal', 'adicional'));
+
+create index if not exists order_items_pedido_idx
+  on public.order_items (organization_id, order_id, position);
+
+-- ─── Consistência entre organizações (idioma da 0464) ───────────────────────
+--
+-- Uma função por tabela filha, cada uma lendo o pai que lhe cabe. Não dá para
+-- fazer uma genérica: o nome da tabela-pai teria de entrar como texto e viraria
+-- SQL dinâmico dentro de um gatilho que roda em todo INSERT.
+
+create or replace function public.fn_verificar_org_da_cobranca()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_org uuid;
+begin
+  select organization_id into v_org from public.orders where id = new.order_id;
+  if v_org is distinct from new.organization_id then
+    raise exception 'payment_charge_org_mismatch' using errcode = '23514';
+  end if;
+
+  -- A conta é opcional (on delete set null), mas se houver tem de ser da MESMA
+  -- organização: senão a cobrança de A nasce apontando para o recebedor de B.
+  if new.credential_id is not null then
+    select organization_id into v_org
+      from public.payment_provider_credentials where id = new.credential_id;
+    if v_org is distinct from new.organization_id then
+      raise exception 'payment_charge_credential_org_mismatch' using errcode = '23514';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+-- Função de gatilho: não é RPC, mas nasce com EXECUTE para public e anon como
+-- qualquer função em public (CLAUDE.md, Migrations item 9).
+revoke execute on function public.fn_verificar_org_da_cobranca() from public, anon;
+
+drop trigger if exists trg_payment_charges_org_consistente on public.payment_charges;
+create trigger trg_payment_charges_org_consistente
+  before insert or update on public.payment_charges
+  for each row execute function public.fn_verificar_org_da_cobranca();
+
+create or replace function public.fn_verificar_org_do_item_do_pedido()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_org uuid;
+begin
+  select organization_id into v_org from public.orders where id = new.order_id;
+  if v_org is distinct from new.organization_id then
+    raise exception 'order_item_org_mismatch' using errcode = '23514';
+  end if;
+
+  if new.product_id is not null then
+    select organization_id into v_org
+      from public.catalog_products where id = new.product_id;
+    if v_org is distinct from new.organization_id then
+      raise exception 'order_item_product_org_mismatch' using errcode = '23514';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function public.fn_verificar_org_do_item_do_pedido() from public, anon;
+
+drop trigger if exists trg_order_items_org_consistente on public.order_items;
+create trigger trg_order_items_org_consistente
+  before insert or update on public.order_items
+  for each row execute function public.fn_verificar_org_do_item_do_pedido();
+
+-- ─── RLS das duas tabelas de conversa (idioma da 0464) ──────────────────────
+--
+-- Leitura: qualquer papel da organização — o agente precisa saber o que o
+-- cliente comprou e se a cobrança ainda está de pé.
+-- Escrita: NINGUÉM pela sessão. Criar cobrança é efeito externo com dinheiro, e
+-- a rota chama depois do requireRole('manager') com o service_role. Um
+-- Atendente que escrevesse `paid` direto pela REST liberaria o produto sem
+-- pagamento — e a policy de UPDATE não tem como saber se o dinheiro entrou.
+
+alter table public.payment_charges enable row level security;
+alter table public.order_items enable row level security;
+
+revoke all on public.payment_charges from anon;
+revoke all on public.order_items from anon;
+grant select on public.payment_charges to authenticated;
+grant select on public.order_items to authenticated;
+grant select, insert, update, delete on public.payment_charges to service_role;
+grant select, insert, update, delete on public.order_items to service_role;
+
+drop policy if exists payment_charges_select on public.payment_charges;
+create policy payment_charges_select on public.payment_charges
+  for select to authenticated
+  using (
+    (organization_id in (select public.fn_user_org_ids()))
+    or public.fn_is_platform_admin()
+  );
+
+drop policy if exists order_items_select on public.order_items;
+create policy order_items_select on public.order_items
+  for select to authenticated
+  using (
+    (organization_id in (select public.fn_user_org_ids()))
+    or public.fn_is_platform_admin()
+  );
+
+-- ─── O provedor em webhook_events_log ─────────────────────────
+--
+-- `infinitepay` entra na lista CANÔNICA de `webhook_events_log_provider_check`,
+-- lá em cima neste mesmo arquivo, e não num bloco aqui: reconstruir a mesma
+-- constraint em dois blocos quebra o `update.sh` de todo clone com vocabulário
+-- posterior (lição do #159), e é o que `baseline-constraint-reconstruida` cobra.
+-- A migration 0717 reescreve a lista inteira pela cadeia; aqui ela já está
+-- aplicada antes deste ponto, que é o que o índice abaixo precisa.
+
+-- ─── Idempotência do aviso do gateway ───────────────────────────────────────
+--
+-- `idx_webhook_events_external_id` existe e NÃO é único: dois POSTs simultâneos
+-- do gateway passariam os dois, e o segundo confirmaria de novo um pagamento já
+-- confirmado. O 23505 deste índice é a idempotência — a rota grava a linha
+-- ANTES de agir e trata o conflito.
+--
+-- Parcial e COM organization_id, ao contrário do `uniq_webhook_events_log_cobranca`
+-- da 0601: a cobrança daquela é da instalação, a desta é de cada organização.
+-- Nenhuma linha deste provedor existia antes do CHECK acima, então não há o que
+-- deduplicar antes de criar o índice.
+
+create unique index if not exists uniq_webhook_events_log_pagamento
+  on public.webhook_events_log (organization_id, provider, external_id)
+  where provider = 'infinitepay' and external_id is not null;
+
+
+-- ---- produto digital, entrega e a LGPD das duas metades (migration 0718) ----
+-- 0718: arquivos do produto digital, entrega e a LGPD das duas
+--
+-- ─── O que a 0717 deixou faltando ───────────────────────────────────────────
+--
+-- A 0717 sabe cobrar: conta do gateway, tentativa de cobrança e item do pedido. Ela
+-- não sabe o que entregar nem registrar que entregou. Sem isto o pagamento
+-- confirma e não acontece nada — que é pior do que não cobrar.
+--
+-- ─── (A) por que arquivo não é `fotos` ──────────────────────────────────────
+--
+-- `catalog_products.fotos` é vitrine: o que o cliente vê antes de comprar.
+-- O entregável é o oposto — só existe depois do pagamento e nunca pode ser
+-- público. São colunas com ciclos de vida e permissões opostas; morar juntas
+-- faria a vitrine e o cofre compartilharem policy.
+--
+-- Guardamos `storage_path`, nunca URL: URL assinada vence (e uma vencida no
+-- banco é um registro que mente), e URL pública não existe neste bucket.
+--
+-- ─── O que NÃO está aqui: o adicional (order bump) ──────────────────────────
+--
+-- Este bloco trazia `product_bumps`. Ele saiu antes de ser mesclado, por medida
+-- própria: NENHUMA linha de código o lia ou escrevia — sem tela, sem ferramenta
+-- de agente, sem consumidor. Tabela com gatilho e policy que ninguém alcança é
+-- peso morto, e a doutrina da casa chama isso pelo nome.
+--
+-- O desenho continua valendo quando a tela existir: o adicional é RELAÇÃO entre
+-- dois produtos, não `catalog_products.produto_adicional_id` (DIRC manda
+-- referenciar; o mesmo produto é adicional de vários com preço de oferta
+-- diferente em cada um). Duas guardas: não apontar para si mesmo (CHECK) e não
+-- formar par recíproco A→B e B→A (gatilho, porque precisa de consulta).
+--
+-- ─── (B) por que o token é guardado como hash ───────────────────────────────
+--
+-- O token da página de entrega é credencial portadora: quem o tem, baixa. Em
+-- claro no banco ele é senha em claro — a mesma regra que o produto já aplica
+-- a bearer token de API (anti-pattern 13). Guardamos SHA-256; a página faz o
+-- hash do que recebeu e compara. A coluna é NULÁVEL de propósito: é assim que
+-- a redação de LGPD o revoga, pondo nulo (ver a seção da LGPD abaixo).
+--
+-- ─── O bucket: ausência de policy é a trava ─────────────────────────────────
+--
+-- `ai-policy` (0014/0017) concede leitura a membro da organização. Aqui NÃO:
+-- o arquivo é a mercadoria, e `viewer` não compra nem baixa. Sob RLS, tabela
+-- sem policy nega para `anon` e `authenticated`; o `service_role` passa porque
+-- ignora RLS. O servidor emite URL assinada curta depois de conferir que
+-- existe entrega válida — a autorização é do pedido pago, nunca do papel.
+--
+-- ─── A LGPD das duas metades, sem redefinir a função ────────────────────────
+--
+-- Desde a 0620 a cascata não nomeia tabela: ela lê `modulo_secoes_lgpd` e pula
+-- a seção cuja tabela não existe. Registrar ali evita um `create or replace`
+-- de `fn_lgpd_cascade_redact_contact`, que tem 919 linhas e já quebrou uma
+-- instalação inteira quando nomeou tabela de módulo (0497 → forward-fix 0620).
+--
+-- O mecanismo foi criado para MÓDULO opcional (ADR-0002, D8) e aqui é usado
+-- por tabela de núcleo. É reuso deliberado: a alternativa é reescrever a
+-- função de 919 linhas, e o `to_regclass` que pula tabela ausente é inócuo
+-- para tabela que sempre existe. **Se a revisão preferir a função, o conserto
+-- é mecânico** — as colunas a redigir estão declaradas aqui.
+--
+-- `order_items` NÃO entra: as colunas dele são nome e código de PRODUTO, que
+-- não são dado pessoal. Registrar seção sem coluna a redigir seria cascata
+-- fantasma ao contrário — a aparência de cobertura sem efeito nenhum.
+--
+-- Sem backfill: as três tabelas nascem vazias em toda instalação.
+
+-- ─── (A) arquivos entregáveis do produto ────────────────────────────────────
+
+create table if not exists public.catalog_product_files (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  product_id uuid not null references public.catalog_products(id) on delete cascade,
+
+  storage_path text not null,
+  nome_arquivo text not null,
+  mime text not null,
+  bytes bigint not null,
+  checksum_sha256 text,
+
+  position integer not null default 0,
+  ativo boolean not null default true,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.catalog_product_files is
+  'Arquivos ENTREGÁVEIS de um produto do catálogo (migration 0718). Não confundir com catalog_products.fotos, que é vitrine. Guarda storage_path no bucket privado produtos-digitais, nunca URL: URL assinada vence e pública não existe aqui.';
+
+alter table public.catalog_product_files
+  drop constraint if exists catalog_product_files_bytes_check;
+alter table public.catalog_product_files
+  add constraint catalog_product_files_bytes_check
+  check (bytes > 0 and bytes <= 524288000);
+
+-- O caminho é único na instalação: dois produtos apontando para o mesmo objeto
+-- fariam a exclusão de um apagar o arquivo do outro.
+create unique index if not exists catalog_product_files_caminho
+  on public.catalog_product_files (storage_path);
+
+create index if not exists catalog_product_files_produto_idx
+  on public.catalog_product_files (organization_id, product_id, position);
+
+drop trigger if exists trg_catalog_product_files_touch on public.catalog_product_files;
+create trigger trg_catalog_product_files_touch
+  before update on public.catalog_product_files
+  for each row execute function public.fn_touch_updated_at();
+
+-- ─── (B) a entrega ──────────────────────────────────────────────────────────
+
+create table if not exists public.order_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  order_id uuid not null references public.orders(id) on delete cascade,
+
+  -- SHA-256 do token da página pública, nunca o token. Nulável porque é assim
+  -- que a redação de LGPD e a revogação por reembolso o derrubam.
+  token_sha256 text,
+
+  canal text not null default 'pagina',
+  entregue_em timestamptz,
+  expira_em timestamptz,
+  revogada_em timestamptz,
+  motivo_revogacao text,
+  downloads integer not null default 0,
+  ultimo_download_em timestamptz,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.order_deliveries is
+  'O que foi entregue de um pedido, quando, e o SHA-256 do token da página pública (migration 0718). Token em claro no banco é senha em claro (anti-pattern 13): a página faz o hash do que recebeu e compara. token_sha256 é nulável de propósito — pôr nulo é como a redação de LGPD e a revogação por reembolso derrubam o acesso.';
+
+alter table public.order_deliveries
+  drop constraint if exists order_deliveries_canal_check;
+alter table public.order_deliveries
+  add constraint order_deliveries_canal_check
+  check (canal in ('pagina', 'whatsapp', 'email'));
+
+-- Hash é hexadecimal de 64 caracteres. O CHECK é o que denuncia, no primeiro
+-- INSERT, o dia em que alguém gravar o token em claro aqui.
+alter table public.order_deliveries
+  drop constraint if exists order_deliveries_token_e_hash;
+alter table public.order_deliveries
+  add constraint order_deliveries_token_e_hash
+  check (token_sha256 is null or token_sha256 ~ '^[0-9a-f]{64}$');
+
+alter table public.order_deliveries
+  drop constraint if exists order_deliveries_revogacao_coerente;
+alter table public.order_deliveries
+  add constraint order_deliveries_revogacao_coerente
+  check ((revogada_em is null) = (motivo_revogacao is null));
+
+create unique index if not exists order_deliveries_token
+  on public.order_deliveries (token_sha256)
+  where token_sha256 is not null;
+
+create index if not exists order_deliveries_pedido_idx
+  on public.order_deliveries (organization_id, order_id);
+
+-- UMA entrega VIVA por pedido. Sem esta trava, `prepararEntrega` consulta e
+-- depois insere sem lock: dois avisos simultaneos leem "nao ha entrega", os
+-- dois inserem, e o pedido passa a ter DOIS links validos, cada um com token
+-- proprio, os dois abrindo o arquivo. Parcial porque a revogada e HISTORICO —
+-- ela fica, e um link novo pode nascer depois dela.
+--
+-- Antes de criar: se algum clone chegou a colecionar duplicata rodando a versao
+-- sem a trava, a mais nova fica e as outras viram revogadas. Sem isto o CREATE
+-- INDEX falharia num banco com dados e o `update.sh` seguiria SEM a trava — a
+-- armadilha que a doutrina de migrations descreve.
+with ranqueadas as (
+  select id,
+         row_number() over (partition by organization_id, order_id
+                            order by entregue_em desc nulls last, id desc) as posicao
+    from public.order_deliveries
+   where revogada_em is null
+)
+update public.order_deliveries d
+   set revogada_em = now(),
+       motivo_revogacao = 'duplicata_antes_da_trava'
+  from ranqueadas r
+ where r.id = d.id
+   and r.posicao > 1;
+
+create unique index if not exists order_deliveries_uma_viva_por_pedido
+  on public.order_deliveries (organization_id, order_id)
+  where revogada_em is null;
+
+drop trigger if exists trg_order_deliveries_touch on public.order_deliveries;
+create trigger trg_order_deliveries_touch
+  before update on public.order_deliveries
+  for each row execute function public.fn_touch_updated_at();
+
+-- ─── Consistência entre organizações (idioma da 0464, igual à 0717) ─────────
+
+create or replace function public.fn_verificar_org_do_arquivo_do_produto()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_org uuid;
+begin
+  select organization_id into v_org from public.catalog_products where id = new.product_id;
+  if v_org is distinct from new.organization_id then
+    raise exception 'catalog_product_file_org_mismatch' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.fn_verificar_org_do_arquivo_do_produto() from public, anon;
+
+drop trigger if exists trg_catalog_product_files_org_consistente on public.catalog_product_files;
+create trigger trg_catalog_product_files_org_consistente
+  before insert or update on public.catalog_product_files
+  for each row execute function public.fn_verificar_org_do_arquivo_do_produto();
+
+create or replace function public.fn_verificar_org_da_entrega()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_org uuid;
+begin
+  select organization_id into v_org from public.orders where id = new.order_id;
+  if v_org is distinct from new.organization_id then
+    raise exception 'order_delivery_org_mismatch' using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.fn_verificar_org_da_entrega() from public, anon;
+
+drop trigger if exists trg_order_deliveries_org_consistente on public.order_deliveries;
+create trigger trg_order_deliveries_org_consistente
+  before insert or update on public.order_deliveries
+  for each row execute function public.fn_verificar_org_da_entrega();
+
+-- ─── RLS ────────────────────────────────────────────────────────────────────
+--
+-- Arquivos do catálogo: leitura por qualquer papel (o agente precisa saber se o
+-- produto tem arquivo para entregar). Escrita pelo servidor.
+-- Entrega: leitura por qualquer papel — menos a coluna que é credencial, e por
+-- isso a tela nunca seleciona `token_sha256` (ele também não serve para nada
+-- em claro: é hash).
+
+alter table public.catalog_product_files enable row level security;
+alter table public.order_deliveries enable row level security;
+
+revoke all on public.catalog_product_files from anon;
+revoke all on public.order_deliveries from anon;
+grant select on public.catalog_product_files to authenticated;
+grant select on public.order_deliveries to authenticated;
+grant select, insert, update, delete on public.catalog_product_files to service_role;
+grant select, insert, update, delete on public.order_deliveries to service_role;
+
+drop policy if exists catalog_product_files_select on public.catalog_product_files;
+create policy catalog_product_files_select on public.catalog_product_files
+  for select to authenticated
+  using ((organization_id in (select public.fn_user_org_ids()))
+         or public.fn_is_platform_admin());
+
+drop policy if exists order_deliveries_select on public.order_deliveries;
+create policy order_deliveries_select on public.order_deliveries
+  for select to authenticated
+  using ((organization_id in (select public.fn_user_org_ids()))
+         or public.fn_is_platform_admin());
+
+-- ─── O bucket privado ───────────────────────────────────────────────────────
+--
+-- Caminho: <organization_id>/<product_id>/<arquivo>. O prefixo de organização é
+-- o que as policies de OUTROS buckets usam para isolar, e aqui serve para o
+-- servidor montar e conferir o caminho — não há policy de tenant porque não há
+-- policy nenhuma para a sessão.
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'produtos-digitais',
+  'produtos-digitais',
+  false,
+  524288000,
+  array[
+    'application/pdf',
+    'application/epub+zip',
+    'application/zip',
+    'video/mp4',
+    'audio/mpeg',
+    'image/png',
+    'image/jpeg',
+    'text/markdown',
+    'text/plain'
+  ]
+)
+on conflict (id) do nothing;
+
+-- NENHUMA policy para `authenticated` neste bucket, e isto é a trava, não um
+-- esquecimento: sob RLS, ausência de policy é negação. Quem lê é o servidor,
+-- pelo `service_role`, depois de conferir que existe entrega válida — e ele
+-- devolve URL assinada curta, nunca o objeto nem o caminho.
+-- Se um dia alguém acrescentar policy de leitura por membro aqui, terá
+-- transformado a mercadoria em arquivo de equipe.
+
+-- ─── LGPD: as duas metades entram na cascata, sem redefinir a função ────────
+--
+-- `ligacao` recebe $1 = organization_id e $2 = contact_id, e vai para `execute`
+-- via `using`: nenhum valor de contato entra no texto do SQL.
+-- `colunas` é o que vira NULO.
+
+insert into public.modulo_secoes_lgpd
+    (modulo, tabela, ligacao, colunas, colunas_rotulo, colunas_redigidas, colunas_agora)
+  values
+    (
+      'pagamentos',
+      'payment_charges',
+      'organization_id = $1 and order_id in (select id from public.orders where organization_id = $1 and contact_id = $2)',
+      -- A página de checkout e a do recibo levam a quem pagou: a primeira é
+      -- instrumento de pagamento vivo, a segunda nomeia o pagador na página do
+      -- provedor. O valor e as datas FICAM: são registro financeiro, e
+      -- anonimizar contato não apaga a contabilidade.
+      array['checkout_url', 'receipt_url'],
+      '{}'::text[],
+      '{}'::text[],
+      array['updated_at']
+    ),
+    (
+      'pagamentos',
+      'order_deliveries',
+      'organization_id = $1 and order_id in (select id from public.orders where organization_id = $1 and contact_id = $2)',
+      -- Pôr o hash em nulo É a revogação: sem ele nenhum token confere, e a
+      -- página de entrega daquele pedido para de abrir.
+      array['token_sha256'],
+      '{}'::text[],
+      '{}'::text[],
+      array['updated_at']
+    )
+  on conflict (modulo, tabela) do update
+    set ligacao = excluded.ligacao,
+        colunas = excluded.colunas,
+        colunas_rotulo = excluded.colunas_rotulo,
+        colunas_redigidas = excluded.colunas_redigidas,
+        colunas_agora = excluded.colunas_agora;
+
+
+-- ---- aviso de conferencia do recibo quebrada (migration 0719) ----
+--
+-- O KIND entra na lista canonica de agent_inbox_items_kind_check, la em cima
+-- neste mesmo arquivo, e nao aqui: um bloco novo reconstruindo a mesma
+-- constraint quebra o update.sh de todo clone com vocabulario posterior
+-- (licao do #159). Aqui fica so o indice, que e proprio desta migration.
+--
+-- Um aviso aberto por organizacao: a pagina quebrada e a MESMA todo dia, e
+-- uma linha por rodada encheria a Central de copias do mesmo fato.
+create unique index if not exists agent_inbox_recibo_quebrado_aberto_unico
+  on public.agent_inbox_items (organization_id, kind)
+  where status = 'open' and kind = 'conferencia_do_recibo_quebrada';
 
 -- ---- #2529: o aviso da Central com destinatário (migration 0689) ----
 -- manifest: **O aviso da Central pode ter DONO (#2529, doc de decisão 162, caminho A).** `agent_inbox_items.para_user_id uuid null references auth.users(id) on delete cascade`: nulo é o aviso da EMPRESA (todos os avisos de hoje, sem backfill); preenchido, só aquela pessoa o vê. O cron `task-reminder` grava o responsável da tarefa ali, e a leitura da Central (lista e contador do sino), o "Marcar todos resolvidos" e o resolver de um aviso passam a enxergar `para_user_id is null or para_user_id = <quem pediu>` — o colega não vê o aviso de prazo do outro, e o "Marcar todos" de um não resolve o do outro. Sem índice: a leitura já filtra por organização e status, e a coluna só recorta o que sobra. Idempotente (`add column if not exists`); o mesmo bloco entra no fim do `baseline.sql`, antes da VARREDURA anon.

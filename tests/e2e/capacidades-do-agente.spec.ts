@@ -69,17 +69,17 @@ const TOOLS_DO_SEED = [
   "crm_get_lead",
   "crm_move_lead_stage",
   "crm_list_leads",
-  // ⚠️ AS OITO ABAIXO NÃO SÃO ENFEITE: elas existem para o cenário ESTOURAR.
+  // ⚠️ AS NOVE ABAIXO NÃO SÃO ENFEITE: elas existem para o cenário ESTOURAR.
   //
   // A jornada do teto (issue #162) só existe se a soma passar do teto: eram 3
   // do seed + 18 de "Atender" = 21 contra teto 20, e a tela recusava dizendo
   // "faltam 1 vaga". Com teto 25 essas mesmas 21 passam, a recusa nunca acontece
   // e o caso vira um clique que sempre dá certo — verde sem medir nada.
   //
-  // A cada subida do teto a aritmética ameaçava caber de novo. Com teto 27
-  // (a proposta comercial entrou no `vender` e o teto subiu com ela) as oito
-  // reproduzem a MESMA conta: com os 3 do seed, 11 + 17 = 28 > 27, recusa por
-  // 1 vaga; desligar uma das oito deixa 10 + 17 = 27, que é o teto exato e
+  // A cada subida do teto a aritmética ameaçava caber de novo. Com teto 28
+  // (a cobrança por PIX entrou no `vender` e o teto subiu com ela) as nove
+  // reproduzem a MESMA conta: com os 3 do seed, 12 + 17 = 29 > 28, recusa por
+  // 1 vaga; desligar uma das nove deixa 11 + 17 = 28, que é o teto exato e
   // passa. O que segura o caso é essa soma estourar por exatamente UMA vaga —
   // estourar por 2 muda o texto da tela e o caso morre, caber no teto faz a
   // recusa sumir e o caso virar verde sem medir nada.
@@ -101,6 +101,12 @@ const TOOLS_DO_SEED = [
   "crm_list_event_types",
   "crm_list_human_cases",
   "crm_list_knowledge_sources",
+  // A nona, pelo teto 28 (a cobranca por PIX entrou no `vender`): leitura pura
+  // do `escalar`, irma da `crm_list_human_cases` acima e FORA de "Atender".
+  // Sem ela a soma passou a CABER no teto e a recusa desta spec sumiu — o
+  // desfecho que `tests/unit/teto-do-atender-bate-com-a-recusa-da-spec.test.ts`
+  // existe para apanhar em segundos em vez de 20 minutos.
+  "crm_get_human_case",
 ];
 
 /**
@@ -232,19 +238,19 @@ test.describe("Configurar o que o agente pode fazer", () => {
     //
     // "Atender" exige 17 vagas: 17 automáticas e nenhuma crítica — a única que
     // ele tinha (o envio de WhatsApp) deixou de ser oferecida na #528, e com ela
-    // saiu uma vaga da conta. Com os 11 do seed (3 + 8) dá 28, acima do teto de 27.
+    // saiu uma vaga da conta. Com os 12 do seed (3 + 9) dá 29, acima do teto de 28.
     //
-    // ⚠️ AS 8 EXTRAS SÃO O QUE MANTÉM ESTE CASO VIVO. Eram 3, e 3 + 18 = 21
-    // estourava o teto de 20. A cada subida do teto (20 → 25 → 27, a última
+    // ⚠️ AS 9 EXTRAS SÃO O QUE MANTÉM ESTE CASO VIVO. Eram 3, e 3 + 18 = 21
+    // estourava o teto de 20. A cada subida do teto (20 → 25 → 27 → 28, a última
     // quando a proposta comercial entrou no `vender`) e a cada queda do pacote
     // "Atender" (18 → 17, na #528), a mesma soma ameaçava caber de novo — e cada
     // vez que isso acontece a recusa deixa de existir e o caso vira um clique que
     // sempre dá certo, verde sem medir nada, o pior desfecho para um teste de
-    // recusa. As 8 (4 de agenda + 4 de leitura pura) estão FORA de "Atender", senão
+    // recusa. As 9 (4 de agenda + 5 de leitura pura) estão FORA de "Atender", senão
     // a união seria menor que a soma.
     //
-    // Aritmética atual: 11 + 17 = 28 > 27, recusa por 1 vaga; desligar uma das
-    // oito deixa 10 + 17 = 27, o teto exato.
+    // Aritmética atual: 12 + 17 = 29 > 28, recusa por 1 vaga; desligar uma das
+    // nove deixa 11 + 17 = 28, o teto exato.
     //
     // Antes da correção a tela aceitava o pacote, chegava a 20 exatas e deixava
     // o checkbox da crítica DESABILITADO — prometia uma escolha que o produto

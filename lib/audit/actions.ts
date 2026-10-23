@@ -745,6 +745,12 @@ export const AUDIT_ACTIONS = [
   // As fotos do produto (migration 0390): subir uma, e reordenar/remover.
   "catalog_product.photo_added",
   "catalog_product.photos_updated",
+  // Os arquivos ENTREGÁVEIS do produto — o que o comprador recebe depois de
+  // pagar, não a vitrine. Tirar um arquivo o tira de QUEM JÁ COMPROU (a página
+  // de entrega lê ao vivo), então a trilha de quem mexeu é a única forma de
+  // responder "por que o cliente parou de conseguir baixar?".
+  "catalog_product.file_added",
+  "catalog_product.file_removed",
 
   // As tarefas do CRM (migration 0210). Tarefa é combinado de trabalho entre
   // pessoas do time — quem a criou, quem mudou o prazo e quem a apagou é
@@ -1230,6 +1236,28 @@ export const AUDIT_ACTIONS = [
   // interruptores, a antecedência e o opt-in de WhatsApp). O número NÃO entra:
   // é dado de contato, e o audit é trilha legível por quem administra.
   "user.task_reminder_prefs_updated",
+  // Uma rodada do cron `pagamento-sonda-do-recibo` que ABRIU ou FECHOU aviso:
+  // a conferência do recibo do provedor parou (ou voltou) de funcionar. Rodada
+  // sem novidade não vira linha — mesmo padrão de "message.recover_stuck_run".
+  "pagamento.sonda_do_recibo_run",
+  // A empresa ligou (ou trocou) a conta que RECEBE o dinheiro das vendas.
+  // Trocar o handle muda o destino da receita, e o audit é a única trilha de
+  // quem mudou — a escrita é do servidor, pela tela de Configurações.
+  "pagamento.conta_configurada",
+  // Alguém da equipe atestou que a chave PIX está cadastrada no provedor. Não
+  // é verificável pela API, então o carimbo humano é a única prova — e a
+  // pergunta que a auditoria faz depois é "quem disse que estava conferido?".
+  "pagamento.chave_pix_conferida",
+  // Alguém da equipe atestou que o aviso de pagamento (webhook) está
+  // configurado no painel do provedor. Mesma razão do carimbo da chave PIX, e
+  // consequência pior quando falta: sem o aviso o cliente paga e a compra nunca
+  // é confirmada nem entregue.
+  "pagamento.webhook_conferido",
+  // Alguém da equipe gerou um endereço NOVO de entrega para um pedido pago, e o
+  // anterior foi revogado no mesmo ato. É o registro que responde "quem mexeu
+  // no acesso deste comprador?" — e o que denuncia reenvio em série, já que
+  // cada um arrebenta o link que o comprador legítimo tinha.
+  "pagamento.entrega_reenviada",
   // "Sincronizar agenda do celular" (#2736): o gesto de IMPORTAR em bloco a
   // agenda do aparelho pareado — mesmo porquê do `contacts.imported` de planilha
   // ("quem trouxe esta base, e quando"), agora com o número de qual conexão veio.

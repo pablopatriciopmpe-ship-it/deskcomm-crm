@@ -25,6 +25,20 @@ on:
 # continua por job em publish-image.yml — mesma regra, menor escopo que precisa.
 permissions:
   contents: read
+  # ⚠️ DIVERGÊNCIA DESTA CÓPIA, e a razão é a visibilidade do repositório.
+  #
+  # O passo "A prévia deste PR mediu a main de agora?" chama
+  # `gh api repos/.../pulls/<n>/files`. Esse endpoint exige `pull-requests:
+  # read`; `contents: read` cobre o `compare`, mas não cobre os arquivos do PR.
+  #
+  # No repositório ORIGINAL, que é público, a chamada passa mesmo sem o escopo.
+  # Aqui, num repositório PRIVADO, ela volta 403 — e o passo morria em silêncio,
+  # porque o shell do GitHub é `bash -e`: o `pipefail` transformava o 403 em
+  # falha da pipeline e o `-e` matava o script antes de qualquer saída. Treze
+  # segundos, nenhuma linha de log, e um check vermelho que não dizia nada.
+  #
+  # Escopo de LEITURA, e só no que já era lido.
+  pull-requests: read
 
 # ── Uma rodada por PR: o push novo cancela a antiga — POR JOB, nunca por workflow
 #
@@ -144,7 +158,12 @@ jobs:
     # Guarda de travamento. O DETECTOR de crescimento é o passo `Orçamento de
     # tempo` no fim de cada parte; a medição que justifica o número está em
     # `TETOS`, em tests/unit/preambulo-do-ci-nao-come-o-relogio.test.ts.
-    timeout-minutes: 15
+    timeout-minutes: 35
+    # ⚠️ DIVERGÊNCIA DESTA CÓPIA — 15 no original. Runner público, não o executor
+    # próprio dele; medido com controle (PR #5). A nota vem DEPOIS do número de
+    # propósito: o detector de `preambulo-do-ci-nao-come-o-relogio` lê os 400
+    # primeiros caracteres do job, e comentário antes empurra o teto para fora
+    # da janela — a cerca passa a dizer que o job não tem teto declarado.
     # Executor próprio para trabalho nosso quando EXECUTOR_PROPRIO=ligado; o
     # porquê e a guarda contra fork: comentário do e2e-parte no e2e.yml.
     runs-on: ${{ vars.EXECUTOR_PROPRIO == 'ligado' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && 'deskcomm-proprio' || 'ubuntu-latest' }}
@@ -410,7 +429,7 @@ jobs:
         if: always()
         env:
           # Orçamento em MINUTOS, POR PARTE — o DETECTOR de crescimento da
-          # suíte. O teto (`timeout-minutes: 15`, no topo do job) é outra coisa:
+          # suíte. O teto (`timeout-minutes` no topo do job) é outra coisa:
           # guarda de travamento.
           #
           # ── O 12 ERA DECLARADO; AGORA É MEDIDO ───────────────────────────
@@ -468,7 +487,17 @@ jobs:
           #
           # A catraca que impede este número de subir sem razão escrita está em
           # tests/unit/preambulo-do-ci-nao-come-o-relogio.test.ts (`ORCAMENTOS`).
-          ORCAMENTO_MIN: "12"
+          # ⚠️ DIVERGÊNCIA DESTA CÓPIA — 12 no original, MEDIDO aqui.
+          #
+          # As partes 1, 2 e 3 eram CANCELADAS aos 15 min (o teto do job), e a
+          # parte 4 fechava em 10. Não é a suíte que cresceu: é que esta cópia
+          # roda nos runners PÚBLICOS do GitHub, e os jobs pesados do original
+          # podem ir para o executor próprio dele (`EXECUTOR_PROPRIO`, no
+          # CLAUDE.md). O mesmo motivo que estourou a memória do build.
+          #
+          # CONTROLE: um PR trivial a partir da `main` pura, sem uma linha de
+          # código nosso, foi cancelado nas MESMAS três partes (PR #5).
+          ORCAMENTO_MIN: "25"
         run: |
           set -euo pipefail
           if [ -z "${VERIFY_INICIO:-}" ]; then
@@ -476,7 +505,7 @@ jobs:
             exit 0
           fi
           decorrido=$(( ($(date +%s) - VERIFY_INICIO) / 60 ))
-          echo "verify parte ${{ matrix.parte }}/${{ strategy.job-total }}: ${decorrido} min (orçamento ${ORCAMENTO_MIN} min, teto de travamento 15 min)"
+          echo "verify parte ${{ matrix.parte }}/${{ strategy.job-total }}: ${decorrido} min (orçamento ${ORCAMENTO_MIN} min, teto de travamento 35 min)"
           if [ "$decorrido" -le "${ORCAMENTO_MIN}" ]; then
             exit 0
           fi

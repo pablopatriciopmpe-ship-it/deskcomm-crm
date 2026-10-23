@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Tag, Receipt, Users, ArrowRight, CaretDoubleLeft, CaretDoubleRight } from "@/lib/ui/icons";
+import { showApiError } from "@/components/feedback/ApiErrorToast";
 import { apiClient } from "@/lib/api/client";
 import { toast } from "sonner";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
@@ -731,6 +732,9 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
     useState<PersonalizacaoProspeccao | null>(null);
   const [leads, setLeads] = useState<LeadRow[] | null>(null);
   const [orders, setOrders] = useState<OrderRow[] | null>(null);
+  /** Endereço novo por pedido, depois de reenviar. Vive só nesta tela. */
+  const [entregaNova, setEntregaNova] = useState<Record<string, string>>({});
+  const [reenviando, setReenviando] = useState<string | null>(null);
   const [activities, setActivities] = useState<ActivityRow[] | null>(null);
   const [demandas, setDemandas] = useState<DemandaRow[] | null>(null);
   const [fatos, setFatos] = useState<Array<{ id: string; headline: string; body: string }>>([]);
@@ -868,6 +872,39 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
   // que falhou depois — e escrita que parece ter dado certo é o defeito que
   // esta tela inteira combate.
   const recarregar = useCallback(() => setTentativa((n) => n + 1), []);
+
+  /**
+   * Gera um endereço NOVO de entrega e mostra aqui.
+   *
+   * O endereço aparece na tela de propósito: reenviar só pela conversa não
+   * resolve o caso que mais acontece — janela de 24 h fechada —, e aí quem
+   * atende precisa do link na mão para entregar por outro caminho. A resposta
+   * diz se o aviso saiu na conversa; quando saiu, o cliente já recebeu e a
+   * cópia aqui é reserva.
+   */
+  const reenviarEntregaDoPedido = useCallback(
+    async (orderId: string) => {
+      setReenviando(orderId);
+      try {
+        // O `apiClient` já desembrulha o `{ data }` do wrapper da casa.
+        const r = await apiClient.post<{ url: string; avisado: boolean }>(
+          `/api/v1/orders/${orderId}/entrega`,
+          {},
+        );
+        setEntregaNova((atual) => ({ ...atual, [orderId]: r.url }));
+        toast.success(
+          r.avisado
+            ? t("Acesso novo enviado na conversa.")
+            : t("Acesso novo gerado. O aviso não saiu — mande o endereço por outro caminho."),
+        );
+      } catch (e) {
+        showApiError(e);
+      } finally {
+        setReenviando(null);
+      }
+    },
+    [t],
+  );
 
   /**
    * A troca de funil recarrega pelo MESMO caminho do "Tentar de novo" — este
@@ -1180,7 +1217,31 @@ export function CRMSidePanel({ conversation, recolhido = false, onAlternarRecolh
                   <div className="text-muted-foreground">
                     {o.status ?? "—"} · {formatMoney(o.total_cents, o.currency)}
                   </div>
+                  {entregaNova[o.id] ? (
+                    <div className="mt-1.5 flex flex-col gap-1">
+                      <code className="block overflow-x-auto rounded-md bg-muted px-1.5 py-1 text-[10px]">
+                        {entregaNova[o.id]}
+                      </code>
+                      <p className="text-[10px] text-muted-foreground">
+                        {t(
+                          "Endereço novo, válido por 30 dias. O anterior parou de funcionar agora.",
+                        )}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
+                {o.status === "paid" ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 shrink-0 px-2 text-[10px]"
+                    disabled={reenviando === o.id}
+                    onClick={() => void reenviarEntregaDoPedido(o.id)}
+                    data-testid={`reenviar-entrega-${o.id}`}
+                  >
+                    {reenviando === o.id ? t("Gerando…") : t("Reenviar acesso")}
+                  </Button>
+                ) : null}
               </li>
             ))}
           </ul>

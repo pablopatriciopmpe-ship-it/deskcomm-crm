@@ -62,11 +62,12 @@ const TETOS: Record<string, { minutos: number; razao: string }> = {
   //     orçamento para 12. Medido antes da divisão, num verde do #1190: job
   //     866 s, `Unit tests` 649 s — cada parte roda metade.
   "ci.yml::verify-parte": {
-    minutos: 15,
+    minutos: 35,
     razao:
       "a suíte foi repartida em partes (#1185 via #1190; três de unit desde 22/09/2026, e uma quarta só de cercas+kit desde 08/10/2026); cada parte roda uma fatia de uma suíte " +
-      "que custava 649s de unit num verde. 15 é guarda de travamento; quem denuncia crescimento " +
-      "é o passo `Orçamento de tempo do verify-parte` (12 min por parte, medido em 19/09)",
+      "que custava 649s de unit num verde. O teto é guarda de travamento; quem denuncia crescimento " +
+      "é o passo `Orçamento de tempo do verify-parte`. " +
+      "⚠️ DIVERGÊNCIA DESTA CÓPIA (era 15 e 12 no original). MEDIDO: as partes 1, 2 e 3 eram CANCELADAS aos 15 min e a parte 4 fechava em 10 — e o CONTROLE decide a causa: um PR trivial a partir da `main` pura, SEM uma linha de código nosso, foi cancelado nas MESMAS três partes (PR #5 deste repositório). Não é a suíte que cresceu: esta cópia roda nos runners PÚBLICOS do GitHub, e os jobs pesados do original podem ir para o executor próprio dele (`EXECUTOR_PROPRIO`, no CLAUDE.md) — o mesmo motivo que estourou a memória do build. Os dois números subiram juntos, mantendo a distância entre orçamento e teto que o desenho original tem (detector antes do torniquete). Quem trouxer este arquivo do upstream vai conflitar AQUI, e é de propósito.",
   },
   // O agregado `invariants` NÃO tem teto de propósito: ele não roda a suíte, só
   // lê o desfecho de `needs`. O teto que denuncia a suíte crescendo vive na perna
@@ -103,8 +104,10 @@ const ORCAMENTOS: Record<string, { minutos: number; razao: string }> = {
   // Que o passo não fique preso a uma delas é o que o caso
   // "o orçamento vale para TODAS as partes" abaixo guarda.
   "ci.yml::verify-parte": {
-    minutos: 12,
+    minutos: 25,
     razao:
+      "⚠️ DIVERGÊNCIA DESTA CÓPIA (era 15 e 12 no original). MEDIDO: as partes 1, 2 e 3 eram CANCELADAS aos 15 min e a parte 4 fechava em 10 — e o CONTROLE decide a causa: um PR trivial a partir da `main` pura, SEM uma linha de código nosso, foi cancelado nas MESMAS três partes (PR #5 deste repositório). Não é a suíte que cresceu: esta cópia roda nos runners PÚBLICOS do GitHub, e os jobs pesados do original podem ir para o executor próprio dele (`EXECUTOR_PROPRIO`, no CLAUDE.md) — o mesmo motivo que estourou a memória do build. Os dois números subiram juntos, mantendo a distância entre orçamento e teto que o desenho original tem (detector antes do torniquete). Quem trouxer este arquivo do upstream vai conflitar AQUI, e é de propósito. " +
+      "A medição original, que o número de 12 servia: " +
       "MEDIDO em 19/09/2026 sobre todos os jobs `verify-parte` das 240 rodadas completas de " +
       "ci.yml criadas depois de as partes entrarem na main (18/09 18:37Z): n=286 que EXECUTARAM " +
       "(260 success + 26 failure) — min 0,9 · mediana 7,2 · p90 8,6 · p95 8,8 · MÁX 9,6; ZERO " +
