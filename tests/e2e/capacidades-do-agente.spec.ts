@@ -238,10 +238,10 @@ test.describe("Configurar o que o agente pode fazer", () => {
     //
     // "Atender" exige 17 vagas: 17 automáticas e nenhuma crítica — a única que
     // ele tinha (o envio de WhatsApp) deixou de ser oferecida na #528, e com ela
-    // saiu uma vaga da conta. Com os 11 do seed (3 + 8) dá 28, acima do teto de 27.
+    // saiu uma vaga da conta. Com os 12 do seed (3 + 9) dá 29, acima do teto de 28.
     //
-    // ⚠️ AS 8 EXTRAS SÃO O QUE MANTÉM ESTE CASO VIVO. Eram 3, e 3 + 18 = 21
-    // estourava o teto de 20. A cada subida do teto (20 → 25 → 27, a última
+    // ⚠️ AS 9 EXTRAS SÃO O QUE MANTÉM ESTE CASO VIVO. Eram 3, e 3 + 18 = 21
+    // estourava o teto de 20. A cada subida do teto (20 → 25 → 27 → 28, a última
     // quando a proposta comercial entrou no `vender`) e a cada queda do pacote
     // "Atender" (18 → 17, na #528), a mesma soma ameaçava caber de novo — e cada
     // vez que isso acontece a recusa deixa de existir e o caso vira um clique que
