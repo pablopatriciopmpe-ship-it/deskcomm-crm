@@ -1386,12 +1386,20 @@ export function CRMSidePanel({
                     <Button
                       variant="ghost"
                       size="sm"
-                      // `self-start` SÓ quando o endereço está à mostra: o `<li>` é
-                      // `items-center`, e com o bloco multilinha dentro do primeiro
-                      // filho o botão passaria a ser centralizado contra todo aquele
-                      // bloco, longe da linha do pedido. Condicional porque o caso
-                      // comum — pedido sem endereço à mostra — tem de continuar com
-                      // a aparência que a upstream desenhou.
+                      // `self-start` SÓ quando o endereço está à mostra: o item da
+                      // lista é `items-center`, e com o bloco multilinha dentro do
+                      // primeiro filho o botão passaria a ser centralizado contra
+                      // todo aquele bloco, longe da linha do pedido. Condicional
+                      // porque o caso comum — pedido sem endereço à mostra — tem de
+                      // continuar com a aparência que a upstream desenhou.
+                      //
+                      // ⚠️ NENHUM SINAL DE MAIOR NESTE COMENTÁRIO, nem citando
+                      // regex. A cerca `tests/unit/controle-decorativo.test.ts` casa
+                      // a abertura do botão e PARA no primeiro sinal de maior que
+                      // encontra: um deles aqui fecha a janela da busca antes do
+                      // `onClick`, e o botão é acusado de MUDO com o handler ligado.
+                      // Reprovou a parte 7 do CI duas vezes nesta branch — a segunda
+                      // porque este aviso citava a própria regex.
                       className={cn(
                         "h-6 shrink-0 px-2 text-[10px]",
                         entregaNova[o.id] && "self-start",
