@@ -10445,7 +10445,7 @@ alter table public.agent_inbox_items
     -- lista pelas razões de sempre (bloco único por constraint, #159).
     'task_due',
     'task_overdue',
-    -- (migration 0719) a conferencia do recibo do provedor parou de
+    -- (migration 9052) a conferencia do recibo do provedor parou de
     -- reconhecer a pagina. Enquanto durar, nenhuma venda e confirmada e
     -- nenhum produto sai. Entra NESTA lista e no FIM dela, pelas duas razoes
     -- de sempre (bloco unico por constraint, #159; e a janela de 2000
@@ -14778,7 +14778,7 @@ alter table public.webhook_events_log
     -- nasce com organization_id nulo e corpo {id,type}: é ponteiro, nunca o
     -- corpo do provedor, e fica invisível ao tenant pela própria policy.
     'stripe', 'asaas',
-    -- (migration 0717) a cobranca que cada organizacao faz ao cliente dela.
+    -- (migration 9050) a cobranca que cada organizacao faz ao cliente dela.
     -- Sem esta entrada o INSERT da rota do webhook e recusado pelo CHECK.
     'infinitepay'
   ));
@@ -56598,8 +56598,8 @@ revoke all on function public.fn_conversa_remove_trechos_do_rag(uuid,uuid) from 
 grant execute on function public.fn_conversa_remove_trechos_do_rag(uuid,uuid) to service_role;
 
 notify pgrst,'reload schema';
--- ---- cobrança avulsa por organização: conta do gateway, tentativa e item do pedido (migration 0717) ----
--- 0717: cobrança avulsa por organização — conta do gateway, tentativa de cobrança e item do pedido
+-- ---- cobrança avulsa por organização: conta do gateway, tentativa e item do pedido (migration 9050) ----
+-- 9050: cobrança avulsa por organização — conta do gateway, tentativa de cobrança e item do pedido
 --
 -- ─── O defeito ───────────────────────────────────────────────────────────────
 --
@@ -56734,7 +56734,7 @@ create table if not exists public.payment_provider_credentials (
   webhook_path_token_sha256 text not null,
 
   -- Os carimbos humanos do que a API não responde (ver cabeçalho). O par da
-  -- chave PIX nasceu aqui; o par do webhook entrou pela 0720, e os dois estão
+  -- chave PIX nasceu aqui; o par do webhook entrou pela 9053, e os dois estão
   -- NESTE bloco de propósito: um segundo bloco redefinindo a mesma view
   -- `_safe` quebraria o `update.sh` (lição do #159 — a lista canônica se edita
   -- onde ela está, nunca se reconstrói ao lado).
@@ -56750,7 +56750,7 @@ create table if not exists public.payment_provider_credentials (
 );
 
 comment on table public.payment_provider_credentials is
-  'Conta de gateway de pagamento de CADA organização (migration 0717). Não confundir com cobranca_* (0583), que é a assinatura DA INSTALAÇÃO. O provedor não usa chave de API: o handle é público e o único segredo é o token do webhook, guardado como SHA-256. authenticated lê só as colunas não-secretas, por grant de coluna; a tela usa payment_provider_credentials_safe.';
+  'Conta de gateway de pagamento de CADA organização (migration 9050). Não confundir com cobranca_* (0583), que é a assinatura DA INSTALAÇÃO. O provedor não usa chave de API: o handle é público e o único segredo é o token do webhook, guardado como SHA-256. authenticated lê só as colunas não-secretas, por grant de coluna; a tela usa payment_provider_credentials_safe.';
 
 comment on column public.payment_provider_credentials.pix_conferido_em is
   'Quando alguém confirmou À MÃO que a chave PIX está cadastrada na conta do provedor. Existe porque isso não é verificável pela API: sem a chave, o link nasce 200, o PIX aparece, e só falha na tela do cliente.';
@@ -56778,7 +56778,7 @@ alter table public.payment_provider_credentials
   add constraint payment_provider_credentials_token_e_hash
   check (webhook_path_token_sha256 ~ '^[0-9a-f]{64}$');
 
--- (migration 0720) Para o clone que já tinha a tabela: `create table if not
+-- (migration 9053) Para o clone que já tinha a tabela: `create table if not
 -- exists` acima não acrescenta coluna a tabela que já existe.
 alter table public.payment_provider_credentials
   add column if not exists webhook_conferido_em timestamptz;
@@ -56834,7 +56834,7 @@ create or replace view public.payment_provider_credentials_safe
     from public.payment_provider_credentials;
 
 comment on view public.payment_provider_credentials_safe is
-  'payment_provider_credentials sem o hash do token do webhook (migration 0717). É por aqui que a tela lê. O handle aparece: ele é público.';
+  'payment_provider_credentials sem o hash do token do webhook (migration 9050). É por aqui que a tela lê. O handle aparece: ele é público.';
 
 alter table public.payment_provider_credentials enable row level security;
 revoke all on public.payment_provider_credentials from anon, authenticated;
@@ -56939,7 +56939,7 @@ create table if not exists public.payment_charges (
 );
 
 comment on table public.payment_charges is
-  'Uma linha por TENTATIVA de cobrança de um pedido (migration 0717). É aqui que mora o ciclo de vida fino do pagamento: orders.status não tem expired nem disputed, e alargar aquele CHECK é a armadilha da 0623. O id DESTA linha é o order_nsu enviado ao provedor — é assim que o aviso volta a encontrar a cobrança.';
+  'Uma linha por TENTATIVA de cobrança de um pedido (migration 9050). É aqui que mora o ciclo de vida fino do pagamento: orders.status não tem expired nem disputed, e alargar aquele CHECK é a armadilha da 0623. O id DESTA linha é o order_nsu enviado ao provedor — é assim que o aviso volta a encontrar a cobrança.';
 
 comment on column public.payment_charges.conferido_pelo_recibo_em is
   'Quando o recibo público do provedor foi buscado e o valor bateu. O webhook da InfinitePay não é assinado e o payment_check deles é rota morta, então esta conferência é a única prova de pagamento — e o CHECK payment_charges_conferida_antes_de_paga a torna obrigatória.';
@@ -57082,7 +57082,7 @@ create table if not exists public.order_items (
 );
 
 comment on table public.order_items is
-  'Item de um pedido, com SNAPSHOT de nome e código (migration 0717). Formato de crm_proposal_items. product_id é on delete set null e o produto é mutável: sem o snapshot, renomear o produto reescreve o que foi vendido no ano passado.';
+  'Item de um pedido, com SNAPSHOT de nome e código (migration 9050). Formato de crm_proposal_items. product_id é on delete set null e o produto é mutável: sem o snapshot, renomear o produto reescreve o que foi vendido no ano passado.';
 
 alter table public.order_items
   drop constraint if exists order_items_quantidade_check;
@@ -57221,7 +57221,7 @@ create policy order_items_select on public.order_items
 -- lá em cima neste mesmo arquivo, e não num bloco aqui: reconstruir a mesma
 -- constraint em dois blocos quebra o `update.sh` de todo clone com vocabulário
 -- posterior (lição do #159), e é o que `baseline-constraint-reconstruida` cobra.
--- A migration 0717 reescreve a lista inteira pela cadeia; aqui ela já está
+-- A migration 9050 reescreve a lista inteira pela cadeia; aqui ela já está
 -- aplicada antes deste ponto, que é o que o índice abaixo precisa.
 
 -- ─── Idempotência do aviso do gateway ───────────────────────────────────────
@@ -57241,12 +57241,12 @@ create unique index if not exists uniq_webhook_events_log_pagamento
   where provider = 'infinitepay' and external_id is not null;
 
 
--- ---- produto digital, entrega e a LGPD das duas metades (migration 0718) ----
--- 0718: arquivos do produto digital, entrega e a LGPD das duas
+-- ---- produto digital, entrega e a LGPD das duas metades (migration 9051) ----
+-- 9051: arquivos do produto digital, entrega e a LGPD das duas
 --
--- ─── O que a 0717 deixou faltando ───────────────────────────────────────────
+-- ─── O que a 9050 deixou faltando ───────────────────────────────────────────
 --
--- A 0717 sabe cobrar: conta do gateway, tentativa de cobrança e item do pedido. Ela
+-- A 9050 sabe cobrar: conta do gateway, tentativa de cobrança e item do pedido. Ela
 -- não sabe o que entregar nem registrar que entregou. Sem isto o pagamento
 -- confirma e não acontece nada — que é pior do que não cobrar.
 --
@@ -57329,7 +57329,7 @@ create table if not exists public.catalog_product_files (
 );
 
 comment on table public.catalog_product_files is
-  'Arquivos ENTREGÁVEIS de um produto do catálogo (migration 0718). Não confundir com catalog_products.fotos, que é vitrine. Guarda storage_path no bucket privado produtos-digitais, nunca URL: URL assinada vence e pública não existe aqui.';
+  'Arquivos ENTREGÁVEIS de um produto do catálogo (migration 9051). Não confundir com catalog_products.fotos, que é vitrine. Guarda storage_path no bucket privado produtos-digitais, nunca URL: URL assinada vence e pública não existe aqui.';
 
 alter table public.catalog_product_files
   drop constraint if exists catalog_product_files_bytes_check;
@@ -57374,7 +57374,7 @@ create table if not exists public.order_deliveries (
 );
 
 comment on table public.order_deliveries is
-  'O que foi entregue de um pedido, quando, e o SHA-256 do token da página pública (migration 0718). Token em claro no banco é senha em claro (anti-pattern 13): a página faz o hash do que recebeu e compara. token_sha256 é nulável de propósito — pôr nulo é como a redação de LGPD e a revogação por reembolso derrubam o acesso.';
+  'O que foi entregue de um pedido, quando, e o SHA-256 do token da página pública (migration 9051). Token em claro no banco é senha em claro (anti-pattern 13): a página faz o hash do que recebeu e compara. token_sha256 é nulável de propósito — pôr nulo é como a redação de LGPD e a revogação por reembolso derrubam o acesso.';
 
 alter table public.order_deliveries
   drop constraint if exists order_deliveries_canal_check;
@@ -57436,7 +57436,7 @@ create trigger trg_order_deliveries_touch
   before update on public.order_deliveries
   for each row execute function public.fn_touch_updated_at();
 
--- ─── Consistência entre organizações (idioma da 0464, igual à 0717) ─────────
+-- ─── Consistência entre organizações (idioma da 0464, igual à 9050) ─────────
 
 create or replace function public.fn_verificar_org_do_arquivo_do_produto()
 returns trigger
@@ -57589,7 +57589,7 @@ insert into public.modulo_secoes_lgpd
         colunas_agora = excluded.colunas_agora;
 
 
--- ---- aviso de conferencia do recibo quebrada (migration 0719) ----
+-- ---- aviso de conferencia do recibo quebrada (migration 9052) ----
 --
 -- O KIND entra na lista canonica de agent_inbox_items_kind_check, la em cima
 -- neste mesmo arquivo, e nao aqui: um bloco novo reconstruindo a mesma

@@ -176,7 +176,7 @@ const SITES: { arquivo: string; fronteira: string; papel?: "gerador" | "validado
   // package.ts. Nada de texto digitado pelo operador entra na chave.
   { arquivo: "lib/ai/skills/package-files.ts", fronteira: "storage.chave-de-objeto" },
   { arquivo: "app/api/v1/products/[id]/fotos/route.ts", fronteira: "storage.chave-de-objeto" },
-  // O ENTREGÁVEL do produto digital (0718): o que o comprador recebe depois de
+  // O ENTREGÁVEL do produto digital (9051): o que o comprador recebe depois de
   // pagar. Mesmo molde de chave da rota irmã de fotos — `{org}/{produto}/{uuid}.{ext}`,
   // os três pedaços gerados no SERVIDOR (uuid v4, alfabeto ASCII) e nada do nome
   // que o operador mandou. A extensão sai da ASSINATURA dos bytes

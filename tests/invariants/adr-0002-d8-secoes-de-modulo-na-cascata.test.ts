@@ -133,7 +133,7 @@ describe("D8 — a anonimização alcança as seções de módulo declaradas", (
     // para um módulo que não pediu (honorários, 0480). Enquanto ninguém
     // declarava, "o registro está vazio" dizia isso com uma linha.
     //
-    // A 0718 trouxe o primeiro declarante real — o módulo de pagamentos, que
+    // A 9051 trouxe o primeiro declarante real — o módulo de pagamentos, que
     // precisa redigir o checkout e o recibo (instrumento de pagamento vivo e
     // página que nomeia o pagador) e derrubar o acesso da entrega pondo o hash
     // do token em nulo. Com um declarante legítimo, `count = 0` passou a ser

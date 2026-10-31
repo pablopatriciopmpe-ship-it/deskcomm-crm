@@ -369,7 +369,7 @@ beforeAll(() => {
         select id into v_produto from public.catalog_products
           where organization_id = v_org limit 1;
 
-        -- ─── O CAMINHO DO DINHEIRO (migrations 0717/0718/0720) ───────────────
+        -- ─── O CAMINHO DO DINHEIRO (migrations 9050/9051/9053) ───────────────
         --
         -- Cinco tabelas que guardam, juntas, QUEM RECEBE o dinheiro das vendas,
         -- QUANTO foi cobrado de quem, e O ARQUIVO que o comprador pagou para
@@ -777,7 +777,7 @@ export const TABLES = [
   // exige `manager` — esse segundo eixo é medido em
   // `tests/invariants/catalogo-so-gestor-muda-preco.test.ts`, não aqui.
   "catalog_products",
-  // migrations 0717/0718/0720 — o caminho do dinheiro. `payment_provider_
+  // migrations 9050/9051/9053 — o caminho do dinheiro. `payment_provider_
   // credentials` guarda PARA ONDE VAI o dinheiro das vendas (a conta do
   // provedor); `payment_charges`, quanto foi cobrado de quem e se foi pago;
   // `order_items`, o que foi vendido com o preço praticado; `catalog_product_
