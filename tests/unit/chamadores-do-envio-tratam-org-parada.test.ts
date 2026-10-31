@@ -44,6 +44,8 @@ const CHAMADORES: Record<string, string> = {
     "ferramenta MCP: o 403 vira `cobranca_criada: false` com motivo `envio_falhou`, e o token da org parada já é recusado antes. A cobrança criada fica `pending` e a reconciliação diária não a toca (ela só reemite aviso que CHEGOU) — nada sobrevive à reativação como enviado",
   "lib/pagamentos/confirmar.handler.ts":
     "o catch devolve `entregue_sem_aviso`: a ENTREGA já existe e o link vale 30 dias, então o pagamento não se perde com a suspensão — só o aviso não sai, e o pedido pago aparece no painel do contato. É o que torna possível confirmar pagamento de org suspensa (o cliente final pagou). ⚠️ O REENVIO DO LINK AINDA NÃO EXISTE: nenhuma tela lê order_deliveries e o token é hash no banco, então hoje o comprador fica sem o endereço até alguém construir o reenvio",
+  "lib/inbox/encaminhar-mensagem.ts":
+    "propaga o 403 org_suspended ao chamador da rota `forward`; nada é gravado — a linha do destino só nasce se o envio aceitar",
 };
 
 const PORTA = "app/api/v1/messages/_handler.ts";

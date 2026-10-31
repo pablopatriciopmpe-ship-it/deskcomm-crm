@@ -3,7 +3,7 @@
 import { useLocaleDeData } from "@/hooks/i18n/useLocaleDeData";
 import { format } from "date-fns";
 import { useT } from "@/hooks/i18n/useT";
-import { ArrowBendUpLeft, CaretDown, Check, Checks, Clock, PencilSimple, Robot, Trash, WarningOctagon } from "@/lib/ui/icons";
+import { ArrowBendUpLeft, ArrowBendUpRight, CaretDown, Check, Checks, Clock, PencilSimple, Robot, Trash, WarningOctagon } from "@/lib/ui/icons";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -15,7 +15,9 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Message } from "@/lib/types/messaging";
 import type { ReacaoNoBalao } from "@/lib/inbox/reacoes-no-fio";
+import { lerMencoesDeGrupo, textoComMencoesResolvidas } from "@/lib/messaging/mencoes-de-grupo";
 import { lerRemetenteDeGrupo, rotuloDoRemetente } from "@/lib/messaging/remetente-de-grupo";
+import { motivoDaFalhaDaMensagem } from "@/lib/inbox/motivo-da-falha";
 import { CitationButton } from "@/components/ai/CitationButton";
 import { MediaRenderer } from "@/components/inbox/media/MediaRenderer";
 import { MediaUnavailable } from "@/components/inbox/media/MediaUnavailable";
@@ -24,9 +26,9 @@ import { LocationCard } from "@/components/inbox/media/LocationCard";
 import { localizacaoDaMensagem } from "@/lib/messaging/localizacao";
 import { reenvioDaMensagem } from "@/lib/messaging/reenvio";
 import { ApiError } from "@/lib/api/types";
-import { FRASES_DE_FALHA, fraseDaFalhaDeCanal } from "@/lib/channels/frases-de-falha";
 import { resolveSharedContact } from "@/lib/messaging/contact-card";
 import { lerAnuncioDaMensagem } from "@/lib/leads/atribuicao-de-anuncio";
+import { marcadorDaApagada, textoDaApagadaApareceNaInbox } from "@/lib/messaging/apagada";
 import { AnuncioCard } from "@/components/inbox/AnuncioCard";
 import {
   extractCitations,
@@ -39,6 +41,11 @@ interface Props {
   debugCitations?: boolean;
   /** Escolher esta mensagem para responder "em cima" dela. */
   onResponder?: (m: Message) => void;
+  /**
+   * Escolher esta mensagem para ENCAMINHAR a outra conversa (#2835). O gesto
+   * abre a escolha de destino; quem executa é o hook da tela.
+   */
+  onEncaminhar?: (m: Message) => void;
   /** A mensagem citada por ESTA, quando houver — desenha o fio. */
   citada?: Message | null;
   /** As reações a ESTA mensagem — marca no canto do balão, nunca balão próprio. */
@@ -108,6 +115,7 @@ export function MessageBubble({
   searchMatch = false,
   debugCitations,
   onResponder,
+  onEncaminhar,
   citada,
   reacoes,
   viewerUserId,
@@ -168,9 +176,10 @@ export function MessageBubble({
   const isBareSticker = hasMedia && message.type === "sticker" && !message.body;
   // Apagada pelo autor ("apagar para todos"). A linha continua no histórico —
   // sumir com ela deixaria a resposta seguinte respondendo ao nada —, mas o
-  // texto não aparece: mostrá-lo seria expor justamente o que o cliente pediu
-  // para tirar do ar.
+  // texto do CLIENTE não aparece: mostrá-lo seria expor justamente o que ele
+  // pediu para tirar do ar. A régua mora em `lib/messaging/apagada.ts`.
   const apagada = Boolean(message.revoked_at);
+  const textoApagadoVisivel = apagada && textoDaApagadaApareceNaInbox(message.direction);
   const ocultaNoCrm = Boolean(message.metadata?.crm_hidden_at);
   const editada = Boolean(message.edited_at) && !apagada;
   const enviadaPeloAtendente = isOutbound && ["user", "crm"].includes(message.sent_via)
@@ -180,7 +189,12 @@ export function MessageBubble({
     && agora - new Date(message.sent_at).getTime() <= 15 * 60 * 1000;
   const podeApagar = enviadaPeloAtendente && Boolean(onApagar);
   const podeOcultar = !isOutbound && !apagada && Boolean(ocultaNoCrm ? onRestaurar : onOcultar);
-  const temMenu = Boolean(onResponder || (podeEditar && onEditar) || podeApagar || podeOcultar);
+  // Encaminhar vale para qualquer mensagem com conteúdo — recebida ou enviada.
+  // Só não se encaminha o que foi apagado: o conteúdo saiu do ar de propósito.
+  const podeEncaminhar = Boolean(onEncaminhar) && !apagada;
+  const temMenu = Boolean(onResponder || podeEncaminhar || (podeEditar && onEditar) || podeApagar || podeOcultar);
+  const cartaoDeDocumentoVisivel = hasMedia && message.type === "document"
+    && !editando && !apagada && !ocultaNoCrm;
   const reenvio = onReenviar
     ? reenvioDaMensagem(message, { userId: viewerUserId, podeReenviarDeOutros, agora })
     : "nenhum";
@@ -188,11 +202,7 @@ export function MessageBubble({
     && !message.metadata?._optimistic;
   // O MOTIVO à vista, e não só no Tooltip: o dedo não abre Tooltip. O texto
   // cru do canal fica fora daqui — ele pode trazer endereço interno do serviço.
-  const codigoDaFalha = message.error_code ?? "";
-  const motivoDaFalha = fraseDaFalhaDeCanal(codigoDaFalha)
-    // `as string`, e não `!`: é a forma que a cerca de i18n desembrulha para cobrar o espanhol de cada frase.
-    ? t(FRASES_DE_FALHA[codigoDaFalha] as string)
-    : t("Não foi possível enviar esta mensagem.");
+  const motivoDaFalha = motivoDaFalhaDaMensagem(message, t);
   const aiGenerated = isAiGeneratedMessage(message.metadata);
   const citations = extractCitations(message.metadata);
   const showCitationButton =
@@ -228,7 +238,16 @@ export function MessageBubble({
       // o mesmo erro de #1046.
       return emNomeDe.token_name ? `${nome} · ${t("via")} ${emNomeDe.token_name}` : nome;
     }
-    if (message.sent_via === "ai") return "IA";
+    if (message.sent_via === "ai") {
+      // #3649: o nome do agente vem GRAVADO na linha, como o de `sent_on_behalf`.
+      // Só `ai_actor_name`: é o campo que o handler grava DEPOIS de
+      // `input.metadata`, então o cliente não o forja; outro apelido em
+      // `metadata` seria entrada do cliente. Sem nome (linha antiga), "IA".
+      // "IA" passa por `t()`; o nome do agente sai como cadastrado (#1046).
+      const gravado = message.metadata?.ai_actor_name;
+      const nome = typeof gravado === "string" ? gravado.trim() : "";
+      return nome ? `${t("IA")} · ${nome}` : "IA";
+    }
     // A REGRA falou, e não a IA: texto fixo de automação, follow-up ou lembrete
     // de agenda (#652). O ramo passou a existir porque o valor passou a ser
     // gravado — antes dele, um rótulo aqui seria promessa sem dado atrás.
@@ -255,6 +274,14 @@ export function MessageBubble({
   // `lerRemetenteDeGrupo` (Task 2): este componente não conhece o formato de
   // `metadata.group_sender`, só o resultado já validado.
   const remetente = !isOutbound ? lerRemetenteDeGrupo(message.metadata) : null;
+  // #3566 — AS MENÇÕES do grupo. Em grupo o WhatsApp escreve `@<lid>` no texto,
+  // e `metadata.mentions` guarda quem é cada identificador. O corpo GRAVADO
+  // continua cru (é o dado do provedor, auditável); a troca acontece aqui, por
+  // ocorrência e pelo PRÓPRIO lid — menção repetida resolve cada uma pelo seu, e
+  // dois contatos chamados "João" não trocam de lugar. Sem menção conhecida, o
+  // texto sai idêntico (o número que já estava lá é a informação disponível).
+  const mencoes = lerMencoesDeGrupo(message.metadata);
+  const corpo = textoComMencoesResolvidas(message.body, mencoes);
   // O anúncio que gerou ESTA mensagem (a ingestão grava em `metadata.anuncio`
   // a mensagem nascida de um clique). Só na recebida: é o cliente que chega
   // pelo anúncio, como o WhatsApp mostra no celular.
@@ -305,15 +332,22 @@ export function MessageBubble({
             : cn(
                 "rounded-2xl px-3 py-2 shadow-sm",
                 temMenu && "pr-8",
+                // A área de toque da seta ocupa 48px. O documento precisa
+                // terminar antes dela, inclusive quando o cartão encolhe.
+                temMenu && cartaoDeDocumentoVisivel && "pointer-coarse:pr-12 pointer-coarse:max-w-[85%]",
                 isOutbound
                   ? "rounded-br-sm bg-primary text-primary-foreground"
                   : "rounded-bl-sm bg-muted text-foreground",
               ),
           isFailed && "border border-destructive",
+          // Apagada sai das cores da DIREÇÃO e vai para o CINZA: a diferença
+          // entre o que foi apagado e o que está vivo tem de ser vista de
+          // relance, e o fundo é justamente o que diz de quem é a mensagem —
+          // trocá-lo é o ponto.
+          apagada && "bg-muted/60 text-muted-foreground ring-1 ring-border",
           // A marca da busca é ANEL, não cor de fundo: o fundo já diz de quem é
           // a mensagem, e trocá-lo apagaria essa leitura justo na bolha achada.
           searchMatch && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
-          apagada && "opacity-70",
           // Espaço para a marca de reação, que fica metade para fora do balão.
           Boolean(reacoes?.length) && "mb-3",
         )}
@@ -346,6 +380,11 @@ export function MessageBubble({
               {onResponder && (
                 <DropdownMenuItem onSelect={() => onResponder(message)}>
                   <ArrowBendUpLeft size={16} aria-hidden />{t("Responder a esta mensagem")}
+                </DropdownMenuItem>
+              )}
+              {podeEncaminhar && (
+                <DropdownMenuItem onSelect={() => onEncaminhar?.(message)}>
+                  <ArrowBendUpRight size={16} aria-hidden />{t("Encaminhar")}
                 </DropdownMenuItem>
               )}
               {podeEditar && onEditar && (
@@ -423,7 +462,7 @@ export function MessageBubble({
         )}
         {senderLabel && (
           <div className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold opacity-80">
-            {senderLabel === "IA" ? (
+            {message.sent_via === "ai" ? (
               <Robot size={10} weight="duotone" aria-hidden />
             ) : null}
             {senderLabel && t(senderLabel)}
@@ -438,12 +477,16 @@ export function MessageBubble({
               onChange={(event) => setTexto(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  // No toque, a tecla de retorno quebra linha e quem salva é o
+                  // botão — a mesma lei do composer (F2). Ctrl/Cmd+Enter salva.
+                  const forca = event.ctrlKey || event.metaKey;
+                  if (!forca && window.matchMedia?.("(pointer: coarse)").matches) return;
                   event.preventDefault();
                   void salvarEdicao();
                 }
               }}
               maxLength={4096}
-              className="min-h-20 w-full rounded-md border border-border bg-background p-2 text-foreground"
+              className="min-h-20 w-full rounded-md border border-border bg-background p-2 text-base text-foreground md:text-sm"
             />
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="ghost" disabled={ocupado} onClick={() => setEditando(false)}>{t("Cancelar")}</Button>
@@ -452,10 +495,11 @@ export function MessageBubble({
           </div>
         ) : apagada ? (
           <div className="space-y-1">
-            <p className="italic leading-snug opacity-70">{t("Esta mensagem foi apagada")}</p>
+            <p className="italic leading-snug opacity-80">{t(marcadorDaApagada(message.direction))}</p>
             {/* O WhatsApp revoga o envio; o CRM conserva o corpo para auditoria
-                interna. Não revelamos texto de uma mensagem apagada pelo cliente. */}
-            {isOutbound && message.body && (
+                interna. Não revelamos texto de uma mensagem apagada pelo cliente
+                (`textoDaApagadaApareceNaInbox`). */}
+            {textoApagadoVisivel && message.body && (
               <div className="border-t border-current/20 pt-1">
                 <p className="text-[10px] opacity-70">{t("Visível só aqui no CRM")}</p>
                 <p className="whitespace-pre-wrap wrap-anywhere leading-snug">{message.body}</p>
@@ -491,7 +535,7 @@ export function MessageBubble({
             {localizacao && <LocationCard localizacao={localizacao} />}
 
             {message.body && !isContact && !localizacao && (
-              <p className="whitespace-pre-wrap wrap-anywhere leading-snug">{message.body}</p>
+              <p className="whitespace-pre-wrap wrap-anywhere leading-snug">{corpo}</p>
             )}
           </>
         )}
@@ -499,7 +543,10 @@ export function MessageBubble({
         <div
           className={cn(
             "mt-1 flex items-center justify-end gap-1 text-[10px]",
-            isOutbound ? "text-primary-foreground" : "text-muted-foreground",
+            // O carimbo acompanha o FUNDO: numa bolha apagada (cinza) o
+            // `primary-foreground` do envio sumiria — hora e check invisíveis
+            // numa bolha que existe justamente para deixar registro.
+            apagada || !isOutbound ? "text-muted-foreground" : "text-primary-foreground",
           )}
         >
           {editada && (
@@ -526,9 +573,7 @@ export function MessageBubble({
                     <WarningOctagon size={10} weight="fill" aria-hidden /> {t("Falhou")}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>
-                  {message.error_message ? t(message.error_message) : (message.error_code ?? t("Erro desconhecido"))}
-                </TooltipContent>
+                <TooltipContent>{motivoDaFalha}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}

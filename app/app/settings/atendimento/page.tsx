@@ -25,8 +25,9 @@ import { createClient } from "@/lib/supabase/server";
 import { loadChannelRoutingSettings } from "@/lib/routing/channel-policies";
 import { configAssinatura } from "@/lib/messaging/assinatura";
 import { podeAdministrarEmpresa } from "@/lib/auth/pode-administrar-empresa";
-import { telefoneDeFichaVaziaLigado } from "@/lib/schemas/settings";
+import { regrasDeCliente, telefoneDeFichaVaziaLigado } from "@/lib/schemas/settings";
 import { AssinaturaForm } from "./_assinatura-form";
+import { ClientePelaVenda } from "./_clientePelaVenda";
 import { ChannelRoutingForm } from "./_channels-form";
 import { AtendimentoForm } from "./_form";
 import { TelefoneDeFichaVazia } from "./_telefoneDeFichaVazia";
@@ -60,11 +61,20 @@ export default async function AtendimentoSettingsPage() {
   const idioma = user.idioma;
   const channels = await loadChannelRoutingSettings(supabase, activeOrg.orgId);
   const assinatura = configAssinatura(settings);
-  const assinaturaInicial = { humanos: assinatura.humanos, ia: assinatura.ia, nome_ia: assinatura.nomeIa };
+  const assinaturaInicial = {
+    humanos: assinatura.humanos,
+    ia: assinatura.ia,
+    nome_ia: assinatura.nomeIa,
+    por_agente: assinatura.porAgente,
+  };
   // #2593 — a opção lida pela MESMA régua que o servidor aplica
   // (`telefoneDeFichaVaziaLigado`): a tela não pode mostrar ligado o que o
   // `proporDadoDoContato` lê como desligado.
   const telefoneDeFichaVazia = telefoneDeFichaVaziaLigado({ crm: settings.crm });
+  // #3644 — as duas chaves da regra da venda, lidas pela MESMA régua que o
+  // nascimento do lead aplica (`regrasDeCliente`): a tela não pode mostrar
+  // ligado o que o roteamento lê como desligado.
+  const venda = regrasDeCliente({ crm: settings.crm });
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6">
@@ -87,6 +97,12 @@ export default async function AtendimentoSettingsPage() {
       <AssinaturaForm initial={assinaturaInicial} />
       <TelefoneDeFichaVazia
         ligada={telefoneDeFichaVazia}
+        idioma={idioma}
+        podeMudar={podeAdministrarEmpresa(user, activeOrg)}
+      />
+      <ClientePelaVenda
+        ligada={venda.pelaVenda}
+        posVendaDias={venda.posVendaDias}
         idioma={idioma}
         podeMudar={podeAdministrarEmpresa(user, activeOrg)}
       />

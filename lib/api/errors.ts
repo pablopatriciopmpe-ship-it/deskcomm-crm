@@ -116,6 +116,9 @@ export const ApiErrorCodes = {
   // (índice uniq_contacts_org_phone). O corpo traz `details.contact_id` para a
   // tela oferecer o contato existente em vez de só mostrar que deu erro.
   contact_exists: "contact_exists",
+  // POST/PATCH /api/v1/attendants/sectors com nome que já existe na organização
+  // (índice attendant_sectors_org_name_unique, migration 0801).
+  sector_name_taken: "sector_name_taken",
   duplicate_external_id: "duplicate_external_id",
   event_gone: "event_gone", // resend de run cujo event_log original foi apagado (on delete set null)
   no_actions_to_resend: "no_actions_to_resend", // resend de regra que não tem mais nenhuma ação de webhook — reenviar nada não é sucesso
@@ -343,6 +346,14 @@ export const ApiErrorCodes = {
   campanha_agenda_invalida: "campanha_agenda_invalida", // 422: data no passado
   campanha_conteudo_invalido: "campanha_conteudo_invalido", // 422: texto vazio ou variável que não existe
   campanha_base_legal_invalida: "campanha_base_legal_invalida", // 422: interesse legítimo sem referência da LIA
+  // Migration 0710 (#1330, fatia 4): campanha pelo número oficial com modelo aprovado.
+  campanha_modo_do_canal: "campanha_modo_do_canal", // 422: texto livre em número oficial, ou modelo em número por QR
+  campanha_modelo_um_numero: "campanha_modelo_um_numero", // 422: modelo aprovado sai por um número só
+  campanha_modelo_inexistente: "campanha_modelo_inexistente", // 422: o modelo não existe neste número
+  campanha_modelo_nao_aprovado: "campanha_modelo_nao_aprovado", // 422: modelo pausado, recusado ou em análise
+  campanha_modelo_variaveis: "campanha_modelo_variaveis", // 422: variável sem origem, ou origem que não serve
+  // Migration 0711: envio rápido (rajada) só pelo número oficial, com modelo aprovado.
+  campanha_velocidade_do_canal: "campanha_velocidade_do_canal", // 422: envio rápido pedido num número por QR
 
   // 500 / upstream
   internal_error: "internal_error",
