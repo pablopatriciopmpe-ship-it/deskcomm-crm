@@ -68,6 +68,7 @@ function tela(produtos: Produto[], podeEditar = true) {
       porPagina={produtos.length}
       buscaInicial=""
       urlsDasFotos={{}}
+      arquivosPorProduto={{}}
       podeEditar={podeEditar}
       textos={TEXTOS}
     />,

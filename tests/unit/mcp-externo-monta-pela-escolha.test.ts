@@ -231,11 +231,17 @@ describe("o seletor de capacidades não apaga a escolha remota (#3586)", () => {
   });
 
   it("a remota conta no teto nas duas direções: vagas restantes e vaga exigida pelo pacote", () => {
-    // 26 nativas fora do pacote + 1 remota = teto cheio. O pacote `atender`
-    // traz 1 automática e 1 crítica (reservada): 27 + 2 = 29. Se a remota
+    // (teto − 1) nativas fora do pacote + 1 remota = teto cheio. O pacote
+    // `atender` traz 1 automática e 1 crítica (reservada): teto + 2. Se a remota
     // sumisse da conta (ligarPacote a descartando, ou o seletor a filtrando),
-    // daria 28 — e o seletor deixaria ligar uma capacidade além do zod.
-    const nativas: CapacidadeSelecionavel[] = Array.from({ length: 26 }, (_, i) => ({
+    // daria teto + 1 — e o seletor deixaria ligar uma capacidade além do zod.
+    //
+    // ⚠️ A CONTA SAI DA CONSTANTE, não do literal. Este bloco trazia `length: 26`
+    // e as contas escritas como 27 e 29, que eram o teto da época: a subida para
+    // 28 (a cobrança por PIX entrou no `vender`) reprovou o caso com
+    // "expected length 28 but got 27", medindo a régua e não o defeito. O que o
+    // caso guarda é a remota CONTAR no teto, em qualquer teto.
+    const nativas: CapacidadeSelecionavel[] = Array.from({ length: TETO_TOOLS_POR_AGENTE - 1 }, (_, i) => ({
       name: `nativa_${i}`,
       risco: "seguro",
       pacotes: ["organizar"],

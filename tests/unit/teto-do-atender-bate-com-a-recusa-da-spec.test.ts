@@ -74,6 +74,31 @@ const CATALOGO_DA_TELA = TOOL_CATALOG.filter(
   marcavel: !IDS_DO_HARNESS.has(entrada.name),
 }));
 
+const SEEDER = join(process.cwd(), "scripts/seed-e2e-capacidades.ts");
+
+/**
+ * O que o SEEDER liga de verdade — a lista `TOOLS_LIGADAS`.
+ *
+ * ⚠️ `TOOLS_DO_SEED` na spec é o ESPELHO desta. As duas são arquivos diferentes
+ * e nada as prendia: acrescentar uma ferramenta só no espelho fez a spec esperar
+ * 12 ligadas num agente com 11, e TRÊS casos de
+ * `capacidades-do-agente.spec.ts` (`:226`, `:342`, `:385`) caíram — 25 minutos de
+ * e2e para descobrir, que é exatamente o custo que este arquivo existe para não
+ * pagar. Mesma técnica do espelho: o texto, não o import, porque o seeder abre
+ * cliente admin no corpo do módulo.
+ */
+function toolsDoSeeder(): string[] {
+  const texto = readFileSync(SEEDER, "utf8");
+  const bloco = texto.match(/const TOOLS_LIGADAS = \[([\s\S]*?)\];/);
+  if (!bloco?.[1]) {
+    throw new Error(
+      "const TOOLS_LIGADAS não existe mais em scripts/seed-e2e-capacidades.ts. " +
+        "Este teste lê a lista de lá de propósito — atualize os dois juntos.",
+    );
+  }
+  return [...bloco[1].matchAll(/^\s*"([^"]+)",?\s*$/gm)].map((m) => m[1]!);
+}
+
 const SEED = toolsDoSeedDaSpec();
 const EM_ATENDER = CATALOGO_DA_TELA.filter((c) => c.pacotes.includes("atender")).map(
   (c) => c.name,
@@ -84,6 +109,15 @@ describe("ligar Atender com o seed da spec excede o teto em exatamente uma vaga"
     // Um seed vazio faria a conta abaixo medir só o pacote — verde sobre nada.
     expect(SEED.length, "o seed da spec foi lido vazio").toBeGreaterThan(0);
     expect(EM_ATENDER.length, "o pacote 'atender' sumiu do catálogo").toBeGreaterThan(0);
+  });
+
+  it("o espelho da spec é EXATAMENTE o que o seeder liga", () => {
+    // A ordem importa: o caso do teto desliga `TOOLS_DO_SEED[2]` por índice.
+    expect(
+      toolsDoSeeder(),
+      "a `TOOLS_DO_SEED` da spec e a `TOOLS_LIGADAS` do seeder divergiram — a spec " +
+        "passaria a afirmar um agente que o seed não monta. As duas andam no mesmo commit.",
+    ).toEqual(SEED);
   });
 
   it("cada ferramenta do seed existe no catálogo", () => {

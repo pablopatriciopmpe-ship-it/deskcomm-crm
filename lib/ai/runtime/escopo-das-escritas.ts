@@ -64,6 +64,13 @@ export const ESCOPO_DAS_ESCRITAS: Readonly<Record<string, Readonly<Record<string
   crm_assign_conversation: { conversation_id: "conversa", to_user_id: "configuracao" },
   crm_manage_tags: { target_id: "alvo_de_tag" },
   crm_send_whatsapp_message: { conversation_id: "conversa" },
+  // A cobrança é a escrita que MOVE DINHEIRO, e ela recebe os dois
+  // identificadores: o contato vira dono do pedido (e da entrega), a conversa
+  // recebe o link. Declarar os dois aqui é o que impede o pior erro possível —
+  // cobrar uma pessoa e entregar a outra. A ferramenta também confere isso por
+  // conta própria (`lib/mcp/tools/pagamentos.ts`); esta linha é a régua da
+  // ponte, que vale para toda escrita do turno.
+  crm_cobrar_produto: { conversation_id: "conversa", contact_id: "contato" },
   crm_request_human_handoff: { conversation_id: "conversa", target_user_id: "configuracao" },
   crm_resume_ai_attendance: { conversation_id: "conversa" },
 

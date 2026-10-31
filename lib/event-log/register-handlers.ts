@@ -36,6 +36,7 @@ import { avisoDeCasoAoSuporteHandler } from "@/lib/escalacao/aviso-ao-suporte.ha
 import { avisoDePropostaNoWhatsAppHandler } from "@/lib/propostas/aviso-no-whatsapp.handler";
 import { avisoDeAgendamentoNoWhatsAppHandler } from "@/lib/agenda/aviso-de-agendamento.handler";
 import { cobrancaSinalHandler } from "@/lib/cobranca/sinal.handler";
+import { confirmarPagamentoHandler } from "@/lib/pagamentos/confirmar.handler";
 import { registerHandler } from "@/lib/event-log/dispatcher";
 
 let _registered = false;
@@ -87,6 +88,9 @@ export function ensureHandlersRegistered(): void {
   // A cobrança do revendedor: relê o provedor (rede de terceiro) e só então
   // escreve. Consome um evento só dela, então a posição não atrasa ninguém.
   registerHandler(cobrancaSinalHandler);
+  // A confirmação do pagamento do CLIENTE da organização (9050): confere o
+  // recibo do provedor e, só então, marca pago e entrega.
+  registerHandler(confirmarPagamentoHandler);
   // Penúltimo, pelo MESMO critério do último: o aviso ao suporte sai por rede de
   // terceiro (o transporte de WhatsApp) e nunca pode atrasar quem escreve no
   // banco — inclusive o `followupGatilhoCasoHandler`, que consome o MESMO evento

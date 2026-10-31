@@ -31,6 +31,7 @@ function tela(buscaInicial: string) {
       porPagina={50}
       buscaInicial={buscaInicial}
       urlsDasFotos={{}}
+      arquivosPorProduto={{}}
       podeEditar={false}
       textos={TEXTOS}
     />

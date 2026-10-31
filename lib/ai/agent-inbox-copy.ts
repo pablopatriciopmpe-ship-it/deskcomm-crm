@@ -47,6 +47,10 @@ export const KIND_LABEL = {
   // ficou "enviando" para sempre é, do lado de lá, uma mensagem que nunca
   // chegou. O motivo técnico fica no corpo do aviso.
   message_send_stuck: "Uma resposta ficou presa e não chegou ao cliente",
+  // Diz a CONSEQUÊNCIA, não o mecanismo: quem lê a Central não precisa saber
+  // o que é "conferência do recibo" — precisa saber que entrou dinheiro e não
+  // saiu produto.
+  conferencia_do_recibo_quebrada: "Pagamentos estão entrando e não viram venda confirmada",
   midia_nao_lida: "O agente não conseguiu ler uma foto ou áudio que o cliente enviou",
   // Diz o que o CLIENTE vive, não a configuração: do lado de lá as mensagens
   // chegam e ninguém responde. "Modo de teste sem número autorizado" descreve

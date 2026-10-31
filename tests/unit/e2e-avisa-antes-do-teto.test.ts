@@ -122,7 +122,18 @@ describe("a rodada de e2e avisa antes de estourar o teto de 30 min", () => {
     // A tentação é subir `timeout-minutes` para o e2e parar de cair. O teto é o
     // que denuncia a suíte crescendo; afrouxá-lo troca um vermelho honesto hoje
     // por um CI mais lento todo mês, sem ninguém perceber.
-    expect(TETO_MIN, "o teto do e2e foi afrouxado em vez de avisar antes dele").toBe(30);
+    // ⚠️ DIVERGÊNCIA DESTA CÓPIA — 30 no original, e a razão não é afrouxamento.
+    //
+    // MEDIDO: cinco das seis partes batiam 28 min e saíam com `exit 124`; a
+    // parte 4 fechava em 10. E o CONTROLE decide a causa: um PR trivial a
+    // partir da `main` pura, SEM uma linha de código nosso, teve as SEIS partes
+    // cortadas igual (PR #5 deste repositório). Esta cópia roda nos runners
+    // PÚBLICOS do GitHub; o original pode mandar os jobs pesados para o
+    // executor próprio dele (`EXECUTOR_PROPRIO`, no CLAUDE.md).
+    //
+    // O que esta cerca protege continua de pé, e é o caso abaixo: o AVISO vem
+    // antes do corte. Teto e orçamento subiram JUNTOS, mantendo a distância.
+    expect(TETO_MIN, "o teto do e2e foi afrouxado em vez de avisar antes dele").toBe(60);
   });
 
   it("o orçamento avisa ANTES do teto, com margem para o que o relógio não vê", () => {
